@@ -1,0 +1,22 @@
+%% Diagramme d'architecture du projet
+
+flowchart TD
+    CLI --> Application
+    Application --> Domain
+    Application --> Infrastructure
+    Application --> GUI
+    GUI --> Widgets
+    GUI --> Adapters
+    Infrastructure --> FileLoader
+    Infrastructure --> CacheManager
+    Infrastructure --> DBAccess
+    Infrastructure --> ParallelEngine
+    Infrastructure --> GridGenerator
+    Infrastructure --> PerformanceMonitor
+    Infrastructure --> LoggingService
+    Domain --> Antenna
+    Domain --> AntennaFactory
+    Domain --> RFModels
+    Domain --> Scene
+    Domain --> MaterialProperties
+    Domain --> SpatialIndex

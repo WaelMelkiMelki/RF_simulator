@@ -1,0 +1,11 @@
+Model Information:
+* title:	Urban Scene Modeling
+* source:	https://sketchfab.com/3d-models/urban-scene-modeling-bb448a52d24a4d639242ca82587e012a
+* author:	Dinesh Naidu (https://sketchfab.com/Dinesh_TS)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Urban Scene Modeling" (https://sketchfab.com/3d-models/urban-scene-modeling-bb448a52d24a4d639242ca82587e012a) by Dinesh Naidu (https://sketchfab.com/Dinesh_TS) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
