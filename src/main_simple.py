@@ -7,7 +7,7 @@ from PyQt6.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QPu
 from PyQt6.QtCore import Qt
 import sys
 from src.core.infrastructure.file_loader import FileLoader
-from src.gui.widgets.scene_viewer_3d import SceneViewer3D
+from src.gui.widgets.scene_viewer_3d_widget import SceneViewer3DWidget
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -15,7 +15,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("RF Simulator 3D - Démo Simple")
         self.setGeometry(100, 100, 1200, 800)
         self.loader = FileLoader()
-        self.scene_viewer = SceneViewer3D(self)
+        self.scene_viewer = SceneViewer3DWidget(self)
         self.setCentralWidget(self.scene_viewer)
         self.init_ui()
 

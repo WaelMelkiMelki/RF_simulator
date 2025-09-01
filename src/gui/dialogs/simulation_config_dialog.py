@@ -70,8 +70,7 @@ class SimulationConfigDialog(QDialog):
         self.model_combo.addItems([
             "free_space", 
             "material_aware", 
-            "okumura_hata",
-            "itu_indoor"
+            "simple_ray_tracing"
         ])
         self.model_combo.setCurrentText("free_space")
         model_layout.addRow("Modèle de propagation:", self.model_combo)
@@ -91,57 +90,21 @@ class SimulationConfigDialog(QDialog):
         material_aware_layout.addWidget(QLabel("Aucun paramètre spécifique pour ce modèle."))
         self.material_aware_page.setLayout(material_aware_layout)
         
-        # Page pour okumura_hata
-        self.okumura_hata_page = QWidget()
-        okumura_layout = QFormLayout()
+        # Page pour simple_ray_tracing
+        self.simple_ray_tracing_page = QWidget()
+        ray_tracing_layout = QFormLayout()
         
-        self.okumura_h_b_spin = QDoubleSpinBox()
-        self.okumura_h_b_spin.setRange(1.0, 500.0)
-        self.okumura_h_b_spin.setValue(30.0)
-        self.okumura_h_b_spin.setSingleStep(1.0)
-        self.okumura_h_b_spin.setSuffix(" m")
-        okumura_layout.addRow("Hauteur antenne base (h_b):", self.okumura_h_b_spin)
+        self.max_reflections_spin = QSpinBox()
+        self.max_reflections_spin.setRange(0, 10)
+        self.max_reflections_spin.setValue(2)
+        ray_tracing_layout.addRow("Réflexions maximales:", self.max_reflections_spin)
         
-        self.okumura_h_m_spin = QDoubleSpinBox()
-        self.okumura_h_m_spin.setRange(1.0, 100.0)
-        self.okumura_h_m_spin.setValue(1.5)
-        self.okumura_h_m_spin.setSingleStep(0.1)
-        self.okumura_h_m_spin.setSuffix(" m")
-        okumura_layout.addRow("Hauteur antenne mobile (h_m):", self.okumura_h_m_spin)
-        
-        self.okumura_env_combo = QComboBox()
-        self.okumura_env_combo.addItems(["urbain", "suburbain", "rural"])
-        okumura_layout.addRow("Environnement:", self.okumura_env_combo)
-        
-        self.okumura_hata_page.setLayout(okumura_layout)
-        
-        # Page pour itu_indoor
-        self.itu_indoor_page = QWidget()
-        itu_layout = QFormLayout()
-        
-        self.itu_n_spin = QDoubleSpinBox()
-        self.itu_n_spin.setRange(0.0, 100.0)
-        self.itu_n_spin.setValue(28.0)
-        self.itu_n_spin.setSingleStep(1.0)
-        itu_layout.addRow("Facteur de perte (n):", self.itu_n_spin)
-        
-        self.itu_pf_spin = QDoubleSpinBox()
-        self.itu_pf_spin.setRange(0.0, 100.0)
-        self.itu_pf_spin.setValue(0.0)
-        self.itu_pf_spin.setSingleStep(1.0)
-        itu_layout.addRow("Facteur de perte par plancher (pf):", self.itu_pf_spin)
-        
-        self.itu_env_combo = QComboBox()
-        self.itu_env_combo.addItems(["residential", "office", "commercial"])
-        itu_layout.addRow("Environnement:", self.itu_env_combo)
-        
-        self.itu_indoor_page.setLayout(itu_layout)
+        self.simple_ray_tracing_page.setLayout(ray_tracing_layout)
         
         # Ajouter les pages au stacked widget
         self.model_stack.addWidget(self.free_space_page)
         self.model_stack.addWidget(self.material_aware_page)
-        self.model_stack.addWidget(self.okumura_hata_page)
-        self.model_stack.addWidget(self.itu_indoor_page)
+        self.model_stack.addWidget(self.simple_ray_tracing_page)
         
         model_layout.addRow(self.model_stack)
         
@@ -185,10 +148,8 @@ class SimulationConfigDialog(QDialog):
             self.model_stack.setCurrentIndex(0)
         elif model_name == "material_aware":
             self.model_stack.setCurrentIndex(1)
-        elif model_name == "okumura_hata":
+        elif model_name == "simple_ray_tracing":
             self.model_stack.setCurrentIndex(2)
-        elif model_name == "itu_indoor":
-            self.model_stack.setCurrentIndex(3)
 
     def accept(self):
         try:
@@ -206,17 +167,9 @@ class SimulationConfigDialog(QDialog):
             # Ajouter les paramètres spécifiques au modèle de propagation
             propagation_model_config = {}
             
-            if self.model_combo.currentText() == "okumura_hata":
+            if self.model_combo.currentText() == "simple_ray_tracing":
                 propagation_model_config = {
-                    "h_b": self.okumura_h_b_spin.value(),
-                    "h_m": self.okumura_h_m_spin.value(),
-                    "environment": self.okumura_env_combo.currentText()
-                }
-            elif self.model_combo.currentText() == "itu_indoor":
-                propagation_model_config = {
-                    "n": self.itu_n_spin.value(),
-                    "pf": self.itu_pf_spin.value(),
-                    "environment": self.itu_env_combo.currentText()
+                    "max_reflections": self.max_reflections_spin.value()
                 }
             elif self.model_combo.currentText() == "material_aware":
                 propagation_model_config = {

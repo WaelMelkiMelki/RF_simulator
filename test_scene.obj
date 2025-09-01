@@ -1,0 +1,33 @@
+# test_scene_simple.obj
+# Fichier de test simple pour remplacer le fichier manquant dans l'exemple
+# Format OBJ basique avec un cube simple
+
+# Vertices (8 sommets d'un cube)
+v 0.0 0.0 0.0
+v 1.0 0.0 0.0
+v 1.0 1.0 0.0
+v 0.0 1.0 0.0
+v 0.0 0.0 1.0
+v 1.0 0.0 1.0
+v 1.0 1.0 1.0
+v 0.0 1.0 1.0
+
+# Faces (12 triangles pour 6 faces)
+# Face avant
+f 1 2 3
+f 1 3 4
+# Face arrière
+f 5 7 6
+f 5 8 7
+# Face gauche
+f 1 4 8
+f 1 8 5
+# Face droite
+f 2 6 7
+f 2 7 3
+# Face bas
+f 1 5 6
+f 1 6 2
+# Face haut
+f 4 3 7
+f 4 7 8

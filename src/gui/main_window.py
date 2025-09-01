@@ -12,10 +12,10 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtGui import QIcon, QAction
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from gui.adapters.backend_adapter import BackendAdapter
-from gui.widgets.scene_viewer_3d import SceneViewer3D
+from gui.widgets.scene_viewer_3d_widget import SceneViewer3DWidget
 # --- MISE À JOUR: Import de la boîte de dialogue ---
-from gui.dialogs.material_assignment_dialog import MaterialAssignmentDialog
 from gui.dialogs.simulation_config_dialog import SimulationConfigDialog # <-- NOUVEAU
+from gui.dialogs.scene_objects_dialog import SceneObjectsDialog # <-- NOUVEAU
 # --- FIN MISE À JOUR ---
 import logging
 import os
@@ -171,34 +171,7 @@ class MainWindow(QMainWindow):
         # Cette liste devrait venir d'une source de données (base de données, fichier de configuration, etc.)
         # Pour l'instant, nous utilisons une liste statique
         return ['default', 'brick', 'concrete', 'glass', 'wood', 'metal', 'drywall', 'plaster']
-    def _open_material_assignment_dialog(self, scene):
-        """Ouvre le dialogue d'attribution des matériaux pour une scène GLTF avec gestion d'erreurs améliorée."""
-        try:
-            available_materials = self.get_available_materials()
-            self._material_dialog = MaterialAssignmentDialog(scene, available_materials, parent=self)
-            self._material_dialog.materials_assigned.connect(self.on_materials_assigned)
-
-            # Vérifier que les méthodes existent avant de connecter les signaux
-            if hasattr(self.scene_viewer, 'mesh_selected'):
-                self.scene_viewer.mesh_selected.connect(self._material_dialog.select_mesh_by_index)
-
-            if hasattr(self.scene_viewer, 'mesh_hovered'):
-                self.scene_viewer.mesh_hovered.connect(self._material_dialog.on_mesh_hovered)
-
-            if hasattr(self._material_dialog, 'mesh_selected_from_dialog') and hasattr(self.scene_viewer, 'highlight_mesh'):
-                self._material_dialog.mesh_selected_from_dialog.connect(self.scene_viewer.highlight_mesh)
-
-            if hasattr(self.scene_viewer, 'enable_mesh_hover_highlight'):
-                try:
-                    self.scene_viewer.enable_mesh_hover_highlight(True)
-                except Exception as e:
-                    logger.error(f"Impossible d'activer la surbrillance: {e}")
-
-            self._material_dialog.show()
-        except Exception as e:
-            error_msg = f"Erreur lors de l'ouverture du dialogue d'attribution des matériaux: {e}"
-            logger.error(error_msg)
-            self.show_error_message(error_msg)
+    
     def __init__(self):
         super().__init__()
         self.backend = BackendAdapter()
@@ -351,7 +324,7 @@ class MainWindow(QMainWindow):
             }
             self.scene_viewer.update_results_visualization(simulation_results, antennas, point_settings)
             self.progress_bar.setVisible(False)
-            self.status_bar.showMessage("Simulation terminée", 3000)
+            self.status_bar.showMessage("Simulation terminée - Valeurs négatives normales (puissance reçue)", 5000)
         except Exception as e:
             error_msg = f"Erreur lors de la mise à jour des résultats: {e}"
             logger.error(error_msg)
@@ -379,6 +352,12 @@ class MainWindow(QMainWindow):
         reset_btn = QPushButton("Réinitialiser")
         reset_btn.clicked.connect(self.reset_application)
         self.toolbar.addWidget(reset_btn)
+        
+        # === NOUVEAU: Bouton pour explorer les objets ===
+        explore_objects_btn = QPushButton("🔍 Explorer objets")
+        explore_objects_btn.clicked.connect(self.open_scene_objects_dialog)
+        explore_objects_btn.setToolTip("Ouvre l'explorateur d'objets pour naviguer et assigner des matériaux")
+        self.toolbar.addWidget(explore_objects_btn)
         
         self.toolbar.addSeparator()
         
@@ -660,7 +639,7 @@ class MainWindow(QMainWindow):
         # Splitter principal
         self.main_splitter = QSplitter(Qt.Orientation.Horizontal)
         # Visualiseur 3D
-        self.scene_viewer = SceneViewer3D()
+        self.scene_viewer = SceneViewer3DWidget()
         self.main_splitter.addWidget(self.scene_viewer)
         layout.addWidget(self.main_splitter)
         logger.info("MainWindow: Widget central créé")
@@ -893,37 +872,14 @@ class MainWindow(QMainWindow):
         # Ouvrir le dialogue UNIQUEMENT si meshes existent
         if self._last_loaded_scene_path and self._last_loaded_scene_path.lower().endswith((".gltf", ".glb")):
             if mesh_names:  # Double validation
-                logger.info("Ouverture dialogue matériaux")
-                self._open_material_assignment_dialog(scene)
-                # Synchronisation du signal mesh_selected avec la dialog
-                if self._material_dialog:
-                    self.scene_viewer.mesh_selected.connect(self._material_dialog.select_mesh_by_index)
-                    # Connecter le signal de sélection de la dialog au visualiseur
-                    self._material_dialog.mesh_selected_from_dialog.connect(self.scene_viewer.highlight_mesh)
+                logger.info("Scène GLTF chargée avec des meshes - pas de dialogue de matériaux")
+                # Dialogue de matériaux supprimé selon la demande de l'utilisateur
+        
+        # === NOUVEAU: Ouvrir automatiquement le dialogue d'exploration d'objets ===
+        QTimer.singleShot(500, lambda: self._open_scene_objects_dialog(scene))
         
     # --- NOUVEAU ---
 
-    def on_materials_assigned(self, assignments):
-        """Callback appelé lorsque l'utilisateur a assigné les matériaux."""
-        try:
-            # Mettre à jour le mapping dans la scène du backend
-            if hasattr(self.backend, 'current_scene') and self.backend.current_scene is not None:
-                # Vérifier si la scène a l'attribut mesh_material_mapping
-                if not hasattr(self.backend.current_scene, 'mesh_material_mapping'):
-                    self.backend.current_scene.mesh_material_mapping = {}
-                # Mettre à jour le mapping
-                self.backend.current_scene.mesh_material_mapping.update(assignments)
-                # Vérifier si la méthode propagate_materials_to_cells existe et est appelable
-                if hasattr(self.backend.current_scene, 'propagate_materials_to_cells') and \
-                   callable(getattr(self.backend.current_scene, 'propagate_materials_to_cells')):
-                    self.backend.current_scene.propagate_materials_to_cells()
-                    logger.info("Matériaux assignés et propagés aux cellules")
-                else:
-                    logger.warning("La méthode propagate_materials_to_cells n'existe pas dans la scène ou n'est pas appelable")
-            else:
-                logger.warning("Aucune scène chargée dans le backend pour assigner les matériaux")
-        except Exception as e:
-            logger.error(f"Erreur lors de l'assignation des matériaux: {e}")
     # --- FIN NOUVEAU ---
 
     # --- NOUVEAU: Méthode load_scene modifiée ---
@@ -1155,6 +1111,97 @@ class MainWindow(QMainWindow):
             logger.error(error_msg)
             self.status_bar.showMessage(error_msg, 5000)
             self.show_error_message(error_msg)
+
+    def _open_scene_objects_dialog(self, scene):
+        """Ouvre le dialogue d'exploration et de navigation des objets de la scène."""
+        try:
+            if not scene:
+                return
+                
+            # Créer et afficher le dialogue d'objets
+            self.scene_objects_dialog = SceneObjectsDialog(scene, parent=self)
+            
+            # Connecter les signaux pour l'interaction avec la vue 3D
+            self.scene_objects_dialog.object_selected.connect(self._on_object_selected)
+            self.scene_objects_dialog.object_highlighted.connect(self._on_object_highlighted)
+            self.scene_objects_dialog.material_assigned.connect(self._on_material_assigned_from_dialog)
+            
+            # Afficher le dialogue de manière non-modale
+            self.scene_objects_dialog.show()
+            
+            logger.info("Dialogue d'exploration d'objets ouvert")
+            
+        except Exception as e:
+            logger.error(f"Erreur lors de l'ouverture du dialogue d'objets: {e}")
+    
+    def _on_object_selected(self, object_name):
+        """Appelé quand un objet est sélectionné dans le dialogue."""
+        try:
+            # Centrer la vue 3D sur l'objet sélectionné
+            if hasattr(self.scene_viewer, 'center_on_object'):
+                self.scene_viewer.center_on_object(object_name)
+            
+            logger.debug(f"Objet sélectionné: {object_name}")
+            
+        except Exception as e:
+            logger.error(f"Erreur lors de la sélection d'objet: {e}")
+    
+    def _on_object_highlighted(self, object_name, highlight):
+        """Appelé quand un objet doit être mis en surbrillance."""
+        try:
+            # Appliquer la surbrillance dans la vue 3D
+            if hasattr(self.scene_viewer, 'highlight_object'):
+                success = self.scene_viewer.highlight_object(object_name, highlight)
+                if success:
+                    action = "surligné" if highlight else "désurligné"
+                    self.status_bar.showMessage(f"Objet {object_name} {action}", 2000)
+                else:
+                    logger.warning(f"Impossible de surligner l'objet: {object_name}")
+            
+        except Exception as e:
+            logger.error(f"Erreur lors de la surbrillance d'objet: {e}")
+    
+    def _on_material_assigned_from_dialog(self, object_name, material_properties):
+        """Appelé quand un matériau est assigné depuis le dialogue d'objets."""
+        try:
+            # Mettre à jour les propriétés de matériau dans le backend
+            if hasattr(self.backend, 'current_scene') and self.backend.current_scene:
+                # Créer ou mettre à jour le mapping des matériaux
+                if not hasattr(self.backend.current_scene, 'mesh_material_mapping'):
+                    self.backend.current_scene.mesh_material_mapping = {}
+                
+                self.backend.current_scene.mesh_material_mapping[object_name] = material_properties
+                
+                # Propager les matériaux si la méthode existe
+                if hasattr(self.backend.current_scene, 'propagate_materials_to_cells'):
+                    self.backend.current_scene.propagate_materials_to_cells()
+            
+            # NOUVEAU: Appliquer la couleur du matériau dans la visualisation 3D
+            if hasattr(self, 'scene_viewer') and self.scene_viewer:
+                self.scene_viewer.apply_material_color(object_name, material_properties)
+            
+            self.status_bar.showMessage(f"Matériau assigné à {object_name}", 3000)
+            logger.info(f"Matériau assigné: {object_name} -> {material_properties}")
+            
+        except Exception as e:
+            logger.error(f"Erreur lors de l'assignation de matériau: {e}")
+            self.status_bar.showMessage(f"Erreur d'assignation: {e}", 5000)
+
+    def open_scene_objects_dialog(self):
+        """Ouvre le dialogue d'exploration d'objets (méthode publique accessible depuis la toolbar)."""
+        try:
+            if hasattr(self.backend, 'current_scene') and self.backend.current_scene:
+                self._open_scene_objects_dialog(self.backend.current_scene)
+            else:
+                self.status_bar.showMessage("Aucune scène chargée. Chargez d'abord une scène 3D.", 3000)
+                QMessageBox.information(
+                    self,
+                    "Aucune scène",
+                    "Veuillez d'abord charger une scène 3D pour explorer ses objets."
+                )
+        except Exception as e:
+            logger.error(f"Erreur lors de l'ouverture du dialogue: {e}")
+            self.status_bar.showMessage(f"Erreur: {e}", 5000)
 
     def show_error_message(self, message):
         """Affiche un message d'erreur à l'utilisateur."""

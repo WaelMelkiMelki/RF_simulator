@@ -322,22 +322,14 @@ class SimulationOrchestrator:
             raise
 
     def _get_propagation_model(self, model_name: str, config: dict = None) -> PropagationStrategy:
-        from core.domain.rf_models import FreeSpaceModel, MaterialAwareModel, OkumuraHataModel, ITUIndoorModel
+        from core.domain.rf_models import FreeSpaceModel, MaterialAwareModel, SimpleRayTracingModel
         # Récupérer la configuration du modèle de propagation
         model_config = config.get("propagation_model_config", {}) if config else {}
         if model_name == "material_aware" or model_name == "ray_tracing":
             max_reflections = model_config.get("max_reflections", 3)
             return MaterialAwareModel(max_reflections=max_reflections)
-        elif model_name == "okumura_hata":
-            h_b = model_config.get("h_b", 30.0)  # Hauteur antenne base
-            h_m = model_config.get("h_m", 1.5)   # Hauteur antenne mobile
-            environment = model_config.get("environment", "urbain")
-            return OkumuraHataModel(h_b=h_b, h_m=h_m, environment=environment)
-        elif model_name == "itu_indoor":
-            n = model_config.get("n", 28)        # Facteur de perte de distance
-            pf = model_config.get("pf", 0)       # Facteur de perte par plancher
-            environment = model_config.get("environment", "residential")
-            return ITUIndoorModel(n=n, pf=pf, environment=environment)
+        elif model_name == "simple_ray_tracing":
+            return SimpleRayTracingModel()
         else:  # free_space par défaut
             return FreeSpaceModel()
 

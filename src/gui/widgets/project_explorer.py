@@ -759,46 +759,6 @@ class ProjectExplorer(QWidget):
 
 # Pour tester le widget de manière isolée
 if __name__ == '__main__':
-    from PyQt6.QtWidgets import QApplication
-    import sys
-    
-    app = QApplication(sys.argv)
-    
-    # Créer un backend factice pour le test
-    class FakeBackend:
-        def get_scenes(self):
-            return []
-        def get_antennas(self):
-            return []
-        def get_results(self):
-            return []
-    
-    # Créer et afficher l'explorateur de projet
-    explorer = ProjectExplorer(backend_adapter=FakeBackend())
-    explorer.show()
-    
-    # Ajouter quelques éléments de test
-    class TestScene:
-        def __init__(self):
-            self.name = "Scène de Test"
-            self.path = "/chemin/vers/scene.obj"
-    
-    class TestAntenna:
-        def __init__(self):
-            self.name = "Antenne Test"
-            self.type = "WiFi"
-            self.frequency = "2.4 GHz"
-            self.power_dbm = 20.0
-            self.position = [0, 0, 1]
-    
-    class TestResult:
-        def __init__(self):
-            self.name = "Résultat Test"
-            self.timestamp = "2023-01-01 12:00:00"
-    
-    # Ajouter des éléments de test
-    explorer.add_scene_item(TestScene())
-    explorer.add_antenna_item(TestAntenna())
-    explorer.add_result_item(TestResult())
-    
-    sys.exit(app.exec())
+    # Pour tests futurs, utiliser les fichiers de test appropriés
+    # tests/gui/test_project_explorer.py
+    pass

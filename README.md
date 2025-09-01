@@ -1,13 +1,42 @@
 # RF Simulator 3D
 
-Ce projet est une application de simulation RF (Radio Fréquence) en 3D, permettant de modéliser des scènes urbaines, d'attribuer des matériaux aux objets et de réaliser des analyses de propagation.
+Simulateur RF 3D développé avec une architecture modulaire en 4 couches, utilisant Python, PyVista pour la visualisation 3D et PyQt6 pour l'interface utilisateur.
+
+## Architecture
+
+Le projet suit une architecture **Clean Architecture** en 4 couches :
+
+- **Présentation** : Interface CLI et GUI (PyQt6)
+- **Application** : Orchestration et logique métier (SimulationOrchestrator)
+- **Domaine** : Modèles RF et entités métier
+- **Infrastructure** : Accès aux données et services externes
 
 ## Fonctionnalités principales
-- Chargement de scènes 3D (GLTF, OBJ, etc.)
-- Gestion des matériaux et propriétés RF
-- Visualisation et interaction 3D avec PyVista et PyQt
-- Attribution et propagation des matériaux sur les cellules du mesh
-- Ray tracing et calculs d'intersection
+
+### Modèles de Propagation RF
+- **FreeSpaceModel** : Propagation en espace libre
+- **MaterialAwareModel** : Propagation avec prise en compte des matériaux
+- **SimpleRayTracingModel** : Ray tracing basique avec géométrie
+
+### Interface Utilisateur
+- **MainWindow** : Fenêtre principale avec PyQt6
+- **SceneViewer3D** : Visualisation 3D interactive avec PyVista
+- **AntennaLibrary** : Bibliothèque d'antennes
+- **ProjectExplorer** : Gestion de projets
+
+### Pipeline de Simulation
+1. **Validation** des entrées (DataValidator)
+2. **Préprocessing** de la scène 
+3. **Computation RF** avec parallélisation (ParallelEngine)
+4. **Post-processing** des résultats et visualisation
+
+## Technologies utilisées
+
+- **Python** : Langage principal
+- **PyQt6** : Interface utilisateur desktop
+- **PyVista** : Visualisation 3D et rendu
+- **NumPy/SciPy** : Calculs scientifiques
+- **Mermaid** : Diagrammes d'architecture
 
 ## Structure du projet
 - `src/` : Code source principal

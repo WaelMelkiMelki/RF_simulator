@@ -131,23 +131,15 @@ class DataValidator:
         """
         model_name = config.get("propagation_model")
         model_config = config.get("propagation_model_config", {})
-        if model_name == "okumura_hata":
-            h_b = model_config.get("h_b")
-            if not isinstance(h_b, (int, float)) or h_b <= 0:
-                raise DataValidationError("La hauteur de l'antenne de base (h_b) doit être un nombre positif.")
-            h_m = model_config.get("h_m")
-            if not isinstance(h_m, (int, float)) or h_m <= 0:
-                raise DataValidationError("La hauteur de l'antenne mobile (h_m) doit être un nombre positif.")
-            environment = model_config.get("environment")
-            if environment not in ["urbain", "suburbain", "rural"]:
-                raise DataValidationError("L'environnement doit être 'urbain', 'suburbain' ou 'rural'.")
-        elif model_name == "itu_indoor":
-            n = model_config.get("n")
-            if not isinstance(n, (int, float)) or n <= 0:
-                raise DataValidationError("Le facteur de perte (n) doit être un nombre positif.")
-            pf = model_config.get("pf")
-            if not isinstance(pf, (int, float)) or pf < 0:
-                raise DataValidationError("Le facteur de perte par plancher (pf) doit être un nombre positif ou zéro.")
+        
+        if model_name == "simple_ray_tracing":
+            max_reflections = model_config.get("max_reflections")
+            if not isinstance(max_reflections, int) or max_reflections < 0:
+                raise DataValidationError("Le nombre maximal de réflexions doit être un entier positif ou zéro.")
+        elif model_name == "material_aware":
+            max_reflections = model_config.get("max_reflections", 3)
+            if not isinstance(max_reflections, int) or max_reflections < 0:
+                raise DataValidationError("Le nombre maximal de réflexions doit être un entier positif ou zéro.")
             environment = model_config.get("environment")
             if environment not in ["residential", "office", "commercial"]:
                 raise DataValidationError("L'environnement doit être 'residential', 'office' ou 'commercial'.")

@@ -157,70 +157,40 @@ class MaterialAwareModel(PropagationStrategy):
         logger.debug(f"MaterialAwareModel._free_space_loss: Distance={distance:.2f}m, Fréquence={frequency/1e9}GHz, Perte={loss:.2f}dB")
         return loss
 
-# --- Ajout des modèles Okumura-Hata et ITU Indoor ---
-class OkumuraHataModel(PropagationStrategy):
-    """Modèle Okumura-Hata pour la propagation extérieure urbaine/suburbaine."""
-    def __init__(self, h_b=30.0, h_m=1.5, environment="urbain"):
-        """
-        Args:
-            h_b (float): Hauteur de l'antenne de base (m)
-            h_m (float): Hauteur de l'antenne mobile (m)
-            environment (str): Type d'environnement ("urbain", "suburbain", "rural")
-        """
-        self.h_b = h_b
-        self.h_m = h_m
-        self.environment = environment.lower()
+class SimpleRayTracingModel(PropagationStrategy):
+    """Modèle de ray tracing simplifié pour la simulation RF avec prise en compte de la géométrie."""
+    
+    def __init__(self, max_reflections=2):
+        self.max_reflections = max_reflections
+    
     def calculate_path_loss(self, tx_pos, rx_pos, scene, frequency, antenna=None):
-        import numpy as np
-        distance_km = np.linalg.norm(np.array(tx_pos) - np.array(rx_pos)) / 1000.0
-        if distance_km <= 0.001:  # 1m en km
-            return 0
-        # Facteur de correction pour la hauteur de l'antenne mobile
-        if self.environment == "urbain":
-            a_h_m = 3.2 * (np.log10(11.75 * self.h_m))**2 - 4.97
-        else:
-            a_h_m = (1.1 * np.log10(frequency/1e6) - 0.7) * self.h_m - (1.56 * np.log10(frequency/1e6) - 0.8)
-        # Formule de base d'Okumura-Hata
-        loss = 69.55 + 26.16 * np.log10(frequency/1e6) - 13.82 * np.log10(self.h_b) - a_h_m + \
-               (44.9 - 6.55 * np.log10(self.h_b)) * np.log10(distance_km)
-        # Corrections pour différents environnements
-        if self.environment == "suburbain":
-            loss -= 2 * (np.log10(frequency/28))**2 - 5.4
-        elif self.environment == "rural":
-            loss -= 4.78 * (np.log10(frequency))**2 - 18.33 * np.log10(frequency) + 40.94
-        logger.debug(f"OkumuraHataModel: Perte calculée: {loss:.2f}dB (distance={distance_km:.2f}km, fréquence={frequency/1e6:.2f}MHz, env={self.environment})")
-        return loss
-
-class ITUIndoorModel(PropagationStrategy):
-    """Modèle ITU Indoor pour la propagation intérieure dans les bâtiments."""
-    def __init__(self, n=28, pf=0, environment="residential"):
         """
-        Args:
-            n (float): Facteur de perte de distance
-            pf (float): Facteur de perte par plancher
-            environment (str): Type d'environnement ("residential", "office", "commercial")
+        Calcule la perte de signal avec ray tracing simplifié.
         """
-        self.n = n
-        self.pf = pf
-        self.environment = environment.lower()
-        # Ajuster les paramètres par défaut selon l'environnement
-        if self.environment == "office":
-            self.n = 30
-            self.pf = 9  # Perte supplémentaire par plancher
-        elif self.environment == "commercial":
-            self.n = 22
-            self.pf = 6
-    def calculate_path_loss(self, tx_pos, rx_pos, scene, frequency, antenna=None):
+        try:
+            # Calcul de base avec la distance
+            distance = np.linalg.norm(np.array(tx_pos) - np.array(rx_pos))
+            base_loss = self._free_space_loss(distance, frequency)
+            
+            # Ajouter des facteurs liés à la géométrie si la scène le permet
+            if hasattr(scene, 'get_obstruction_factor'):
+                obstruction_factor = scene.get_obstruction_factor(tx_pos, rx_pos)
+                base_loss += obstruction_factor
+            
+            logger.debug(f"SimpleRayTracingModel: Perte calculée: {base_loss:.2f}dB (distance={distance:.2f}m)")
+            return base_loss
+            
+        except Exception as e:
+            logger.error(f"SimpleRayTracingModel: Erreur lors du calcul: {e}")
+            # Fallback sur espace libre
+            distance = np.linalg.norm(np.array(tx_pos) - np.array(rx_pos))
+            return self._free_space_loss(distance, frequency)
+    
+    def _free_space_loss(self, distance, frequency):
         import numpy as np
-        distance = np.linalg.norm(np.array(tx_pos) - np.array(rx_pos))
-        if distance <= 0.1:  # 10cm
+        if distance <= 0:
             return 0
-        # Calculer le nombre approximatif de planchers traversés
-        # (Simplification: on suppose que les positions Z différentes indiquent des étages différents)
-        floors = 0
-        if abs(tx_pos[2] - rx_pos[2]) > 2.5:  # Hauteur typique d'un étage
-            floors = int(abs(tx_pos[2] - rx_pos[2]) / 2.5)
-        # Formule ITU Indoor
-        loss = 20 * np.log10(frequency/1e6) + self.n * np.log10(distance) + floors * self.pf - 28
-        logger.debug(f"ITUIndoorModel: Perte calculée: {loss:.2f}dB (distance={distance:.2f}m, fréquence={frequency/1e6:.2f}MHz, env={self.environment}, floors={floors})")
+        c = 3e8  # Vitesse de la lumière en m/s
+        pl0 = 20 * np.log10(c / (4 * np.pi * frequency))
+        loss = 20 * np.log10(distance) - pl0
         return loss

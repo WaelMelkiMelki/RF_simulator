@@ -1,26 +1,192 @@
 # src/gui/widgets/scene_viewer_3d.py
 """
-Visualiseur 3D pour l'application RF Simulator.
-Utilise PyVista avec PyVistaQt pour l'intégration dans PyQt6.
+Wrapper de compatibilité pour SceneViewer3D - NETDATA INNOVATION
+
+TRANSITION vers architecture NETDATA :
+- Maintient la compatibilité avec le code existant
+- Délègue au nouveau VisualizationEngine (Infrastructure Layer)
+- Fournit l'interface existante pendant la migration
+
+NOUVELLE ARCHITECTURE CONFORME NETDATA :
+- SceneViewer3DWidget (Presentation Layer) : Interface utilisateur PyQt6
+- VisualizationEngine (Infrastructure Layer) : Moteur de rendu PyVista/VTK
 """
-import sys
 import logging
-from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QPushButton, QHBoxLayout, QFrame, QLabel,
-    QComboBox, QSlider, QDoubleSpinBox, QApplication
-)
-from PyQt6.QtCore import Qt, pyqtSignal
-import pyvista as pv
-from pyvistaqt import QtInteractor
 import numpy as np
+import pyvista as pv
+from PyQt6.QtCore import pyqtSignal, Qt
+from PyQt6.QtWidgets import QVBoxLayout, QHBoxLayout, QFrame, QPushButton
+from pyvistaqt import QtInteractor
+
+from .visualization_engine import VisualizationEngine
+
 logger = logging.getLogger(__name__)
 
-class SceneViewer3D(QWidget):
+class SceneViewer3D(VisualizationEngine):
+    """
+    Classe de compatibilité pour SceneViewer3D.
+    
+    DEPRECATED - Utiliser SceneViewer3DWidget + VisualizationEngine
+    
+    Cette classe maintient la compatibilité avec l'ancien code
+    tout en déléguant au nouveau VisualizationEngine conforme NETDATA.
+    """
+    
+    def __init__(self, parent=None):
+        """Initialise le wrapper de compatibilité."""
+        logger.warning("SceneViewer3D: Classe dépréciée. Utiliser SceneViewer3DWidget + VisualizationEngine")
+        super().__init__(parent)
+    
+    # Méthodes de compatibilité - délèguent au moteur
+    
+    @staticmethod
+    def get_friendly_name(technical_name):
+        """Convertit un nom technique en nom convivial."""
+        if not technical_name or not isinstance(technical_name, str):
+            return "Objet Inconnu"
+        
+        object_mappings = {
+            "Block_0/Block_0/Block_0/Block_0/Block_0": "Bâtiment 1",
+            "Block_0/Block_0/Block_1/Block_0/Block_0": "Bâtiment 2", 
+            "Block_0/Block_0/Block_2/Block_0/Block_0": "Bâtiment 3",
+            "Block_0/Block_0/Block_3/Block_0/Block_0": "Bâtiment 4",
+            "Block_0/Block_0/Block_4/Block_0/Block_0": "Bâtiment 5"
+        }
+        
+        if technical_name in object_mappings:
+            return object_mappings[technical_name]
+        
+        if "Block_" in technical_name:
+            parts = technical_name.split("/")
+            for part in reversed(parts):
+                if part.startswith("Block_") and len(part) > 6:
+                    try:
+                        num = int(part.split("_")[1]) + 1
+                        return f"Objet {num}"
+                    except:
+                        pass
+        
+        if len(technical_name) > 20:
+            return f"Objet ({technical_name[:15]}...)"
+        
+        return technical_name
+    
+    def init_ui(self):
+        """Compatibilité - déjà géré par VisualizationEngine."""
+        pass
+    
+    def initialize_empty_scene(self):
+        """Compatibilité - déjà géré par VisualizationEngine."""
+        pass
+    
+    def setup_mouse_interactions(self):
+        """Compatibilité - déjà géré par VisualizationEngine."""
+        pass
+    
+    def on_mouse_move_vtk(self, obj, event):
+        """Compatibilité - délègue au moteur."""
+        self._on_mouse_move_vtk(obj, event)
+    
+    def on_right_click_vtk(self, obj, event):
+        """Compatibilité - délègue au moteur."""
+        self._on_right_click_vtk(obj, event)
+    
+    def _extract_point_from_picker(self, picker):
+        """Compatibilité - utilise la méthode du moteur."""
+        return super()._extract_point_from_picker(picker)
+    
+    def update_coordinate_display(self, x, y, z):
+        """Méthode supprimée dans la nouvelle architecture."""
+        pass
+    
+    def copy_coordinates_to_clipboard(self, x=None, y=None, z=None):
+        """Méthode supprimée dans la nouvelle architecture."""
+        pass
+    
+    def set_orthogonal_position(self, position, axis):
+        """Compatibilité - fonctionnalité basique."""
+        try:
+            if axis == 'x':
+                self.plotter.camera.position = (position, 0, 0)
+            elif axis == 'y':
+                self.plotter.camera.position = (0, position, 0)
+            elif axis == 'z':
+                self.plotter.camera.position = (0, 0, position)
+            self.plotter.render()
+        except Exception as e:
+            logger.error(f"SceneViewer3D: Erreur position orthogonale: {e}")
+    
+    def show_scene(self, scene_or_mesh):
+        """Compatibilité - affiche une scène ou un mesh."""
+        try:
+            if hasattr(scene_or_mesh, 'meshes'):
+                # C'est un objet Scene
+                self.update_scene(scene_or_mesh)
+            else:
+                # C'est probablement un mesh PyVista direct
+                self.plotter.clear()
+                self.plotter.add_axes()
+                self.plotter.show_grid()
+                
+                actor = self.plotter.add_mesh(
+                    scene_or_mesh,
+                    opacity=0.8,
+                    smooth_shading=True
+                )
+                
+                self._scene_actors = [actor]
+                self.plotter.reset_camera()
+                
+                logger.info("SceneViewer3D: Mesh direct affiché")
+                
+        except Exception as e:
+            logger.error(f"SceneViewer3D: Erreur affichage: {e}")
+    
+    # Toutes les autres méthodes déjà implémentées dans VisualizationEngine
+    # sont automatiquement disponibles via l'héritage
     # Signals existants
     mesh_selected = pyqtSignal(int)  # Émet l'index du mesh sélectionné
     right_click_position = pyqtSignal(float, float, float)
     # Nouveau signal
     mesh_hovered = pyqtSignal(str)  # Émet le nom du mesh survolé
+
+    @staticmethod
+    def get_friendly_name(technical_name):
+        """Convertit un nom technique en nom convivial."""
+        if not technical_name or not isinstance(technical_name, str):
+            return "Objet Inconnu"
+        
+        # Mappings spécifiques pour les objets courants
+        object_mappings = {
+            "Block_0/Block_0/Block_0/Block_0/Block_0": "Bâtiment 1",
+            "Block_0/Block_0/Block_1/Block_0/Block_0": "Bâtiment 2", 
+            "Block_0/Block_0/Block_2/Block_0/Block_0": "Bâtiment 3",
+            "Block_0/Block_0/Block_3/Block_0/Block_0": "Bâtiment 4",
+            "Block_0/Block_0/Block_4/Block_0/Block_0": "Bâtiment 5"
+        }
+        
+        # Si on a un mapping direct, l'utiliser
+        if technical_name in object_mappings:
+            return object_mappings[technical_name]
+        
+        # Sinon, essayer d'extraire un nom plus lisible
+        # Chercher des patterns comme Block_X pour créer "Objet X"
+        if "Block_" in technical_name:
+            # Extraire le dernier numéro de Block_X
+            parts = technical_name.split("/")
+            for part in reversed(parts):
+                if part.startswith("Block_") and len(part) > 6:
+                    try:
+                        num = int(part.split("_")[1]) + 1  # +1 pour commencer à 1 au lieu de 0
+                        return f"Objet {num}"
+                    except:
+                        pass
+        
+        # Fallback : utiliser le nom technique mais raccourci
+        if len(technical_name) > 20:
+            return f"Objet ({technical_name[:15]}...)"
+        
+        return technical_name
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -28,6 +194,7 @@ class SceneViewer3D(QWidget):
         self.antenna_actors = []            # Liste des acteurs d'antennes (PyVista)
         self.mesh_actor = None              # Acteur principal du mesh affiché
         self._scene_actors = []             # Liste des acteurs de la scène (blocs, objets)
+        self.object_actors = {}             # NOUVEAU: Dictionnaire des acteurs par nom d'objet
         self.antenna_coverage_actors = []   # Liste des acteurs de couverture (points de simulation)
         self.antenna_radius_actors = []     # Liste des acteurs de rayon d'antenne
         self.results_actor = None           # Acteur pour les résultats
@@ -46,6 +213,8 @@ class SceneViewer3D(QWidget):
         self.actor_colors = []
         self.highlight_color = [1, 0, 0]  # Rouge pour la surbrillance
         self.total_meshes = 0
+        # NOUVEAU: Dictionnaire pour stocker les couleurs originales des acteurs
+        self.actor_original_colors = {}  # Stockage externe des couleurs originales
         self.init_ui()
         # Ensure background is white at initialization
         if self.plotter:
@@ -274,30 +443,89 @@ class SceneViewer3D(QWidget):
             if self.plotter is None:
                 logger.warning("SceneViewer3D: Plotter non initialisé")
                 return
+            
             # Effacer la scène précédente
             self.clear_scene()
-            # Obtenir le mesh PyVista
-            mesh = scene.get_pyvista_mesh()
-            if mesh is not None:
-                # Appliquer une coloration différenciée selon le type de mesh
-                self._apply_differentiated_coloring(mesh)
-                logger.info(f"SceneViewer3D: Scène mise à jour avec {mesh.n_points} points")
-                # Centrer la caméra sur le mesh
-                self.plotter.reset_camera()
-                # Ajouter les étiquettes
-                self.add_mesh_labels()
-                # CORRECTION: Texte en vert clair pour être visible sur fond noir
-                self.plotter.add_text(f"Scène chargée: {mesh.n_points} points", 
-                                     position='upper_left', 
-                                     font_size=12, 
-                                     color='lightgreen')  # Vert clair
+            
+            # NOUVEAU: Créer des acteurs séparés pour chaque mesh individuel
+            if hasattr(scene, 'meshes') and scene.meshes:
+                logger.info(f"SceneViewer3D: Création d'acteurs séparés pour {len(scene.meshes)} objets")
+                
+                # Dictionnaire pour stocker les acteurs par nom d'objet
+                self.object_actors = {}
+                total_points = 0
+                
+                for object_name, mesh in scene.meshes.items():
+                    if mesh is not None and mesh.n_points > 0:
+                        # Créer un acteur pour chaque objet
+                        actor = self.plotter.add_mesh(
+                            mesh,
+                            name=object_name,  # Nom unique pour l'acteur
+                            color=[0.7, 0.7, 0.7],  # Couleur par défaut grise
+                            opacity=1.0,
+                            smooth_shading=True,
+                            specular=0.3,
+                            diffuse=0.7,
+                            ambient=0.1,
+                            show_edges=False,  # NOUVEAU: Afficher les arêtes pour debug
+                            reset_camera=False  # NOUVEAU: Ne pas réinitialiser la caméra pour chaque mesh
+                        )
+                        
+                        # Stocker l'acteur dans notre dictionnaire
+                        self.object_actors[object_name] = actor
+                        self._scene_actors.append(actor)
+                        total_points += mesh.n_points
+                        logger.info(f"Acteur créé pour {object_name}: {mesh.n_points} points")
+                
+                logger.info(f"SceneViewer3D: {len(self.object_actors)} acteurs créés, total: {total_points} points")
+                
+                # NOUVEAU: Forcer le rendu pour s'assurer que les acteurs sont visibles
+                if hasattr(self.plotter, 'render'):
+                    self.plotter.render()
+                    logger.info("Rendu forcé après création des acteurs")
+                
             else:
-                logger.warning("SceneViewer3D: Aucun mesh valide trouvé dans la scène")
-                # Afficher un message si aucun mesh n'est trouvé
-                self.plotter.add_text("Aucun mesh trouvé dans le fichier", 
-                                     position='upper_left', 
-                                     font_size=12, 
-                                     color='red')  # Rouge vif
+                # Fallback: utiliser le mesh fusionné si pas d'objets individuels
+                mesh = scene.get_pyvista_mesh()
+                if mesh is not None:
+                    # Appliquer une coloration différenciée selon le type de mesh
+                    self._apply_differentiated_coloring(mesh)
+                    logger.info(f"SceneViewer3D: Scène mise à jour avec {mesh.n_points} points (mesh fusionné)")
+                else:
+                    logger.warning("SceneViewer3D: Aucun mesh valide trouvé dans la scène")
+                    # Afficher un message si aucun mesh n'est trouvé
+                    self.plotter.add_text("Aucun mesh trouvé dans le fichier", 
+                                         position='upper_left', 
+                                         font_size=12, 
+                                         color='red')  # Rouge vif
+                    return
+            
+            # Centrer la caméra sur le mesh
+            self.plotter.reset_camera()
+            
+            # NOUVEAU: Debug - vérifier que les acteurs sont bien présents
+            active_actors = self.plotter.renderer.actors
+            logger.info(f"DEBUG: Nombre d'acteurs actifs dans le renderer: {len(active_actors)}")
+            for i, actor in enumerate(active_actors):
+                try:
+                    if hasattr(actor, 'GetBounds'):
+                        bounds = actor.GetBounds()
+                        logger.info(f"DEBUG: Acteur {i} - Bounds: {bounds}")
+                    else:
+                        logger.info(f"DEBUG: Acteur {i} - Pas de bounds (probablement texte)")
+                except Exception as e:
+                    logger.info(f"DEBUG: Acteur {i} - Erreur bounds: {e}")
+            
+            # Ajouter les étiquettes
+            self.add_mesh_labels()
+            
+            # CORRECTION: Texte en vert clair pour être visible sur fond noir
+            total_points = sum(mesh.n_points for mesh in scene.meshes.values()) if hasattr(scene, 'meshes') else (mesh.n_points if mesh else 0)
+            self.plotter.add_text(f"Scène chargée: {total_points} points", 
+                                 position='upper_left', 
+                                 font_size=12, 
+                                 color='lightgreen')  # Vert clair
+                                 
         except Exception as e:
             logger.error(f"SceneViewer3D: Erreur lors de la mise à jour de la scène: {e}")
             import traceback
@@ -494,6 +722,16 @@ class SceneViewer3D(QWidget):
             if self.mesh_actor:
                 self.plotter.remove_actor(self.mesh_actor)
                 self.mesh_actor = None
+                
+            # NOUVEAU: Nettoyer les acteurs d'objets individuels
+            if hasattr(self, 'object_actors'):
+                for object_name, actor in self.object_actors.items():
+                    try:
+                        self.plotter.remove_actor(actor)
+                    except Exception:
+                        pass
+                self.object_actors.clear()
+                
             for actor in self._scene_actors:
                 try:
                     self.plotter.remove_actor(actor)
@@ -530,10 +768,13 @@ class SceneViewer3D(QWidget):
                 except Exception:
                     pass
                 self.scalar_bar_actor = None
-            try:
-                self.plotter.clear()  # Efface tous les éléments de la scène
-            except Exception:
-                pass
+            
+            # CORRECTION: Ne pas utiliser clear() qui efface tout, retirer les acteurs individuellement
+            # try:
+            #     self.plotter.clear()  # Efface tous les éléments de la scène
+            # except Exception:
+            #     pass
+            
             # Always set background to white after clearing
             try:
                 self.plotter.set_background('white')
@@ -666,7 +907,7 @@ class SceneViewer3D(QWidget):
                     render_points_as_spheres=True,
                     smooth_shading=True,
                     scalar_bar_args={
-                        'title': 'Puissance du signal (dBm)',
+                        'title': 'Puissance reçue (dBm)\n[Émission: +30dBm - Pertes]',
                         'vertical': True,
                         'position_x': 0.85,
                         'position_y': 0.1
@@ -989,7 +1230,7 @@ class SceneViewer3D(QWidget):
                     render_points_as_spheres=True,
                     smooth_shading=True,
                     scalar_bar_args={
-                        'title': 'Puissance du signal (dBm)',
+                        'title': 'Puissance reçue (dBm)\n[Émission: +30dBm - Pertes]',
                         'vertical': True,
                         'position_x': 0.85,
                         'position_y': 0.1
@@ -1308,27 +1549,372 @@ class SceneViewer3D(QWidget):
         """Ajoute des étiquettes aux meshes pour les identifier."""
         try:
             if not hasattr(self, 'scene') or not hasattr(self.scene, 'meshes'):
+                logger.warning("SceneViewer3D: Pas de scène ou de meshes pour ajouter les labels")
                 return
-            mesh_names = list(self.scene.meshes.keys())
-            for i, mesh_name in enumerate(mesh_names):
-                if i < len(self._scene_actors):
-                    actor = self._scene_actors[i]
+            
+            # Utiliser le nouveau système d'acteurs individuels
+            for object_name, actor in self.object_actors.items():
+                try:
                     bounds = actor.GetBounds()
-                    if bounds:
+                    if bounds and len(bounds) >= 6:
                         # Positionner l'étiquette au centre du mesh
                         position = [
                             (bounds[0] + bounds[1]) / 2,
                             (bounds[2] + bounds[3]) / 2,
                             (bounds[4] + bounds[5]) / 2
                         ]
+                        # Utiliser un nom convivial pour l'affichage
+                        display_name = self.get_friendly_name(object_name)
+                        
                         # Ajouter l'étiquette
                         self.plotter.add_point_labels(
                             [position],
-                            [f"{i+1}: {mesh_name}"],
+                            [display_name],
                             point_size=0,
-                            font_size=10,
-                            text_color='white',
-                            shape_opacity=0.7
+                            font_size=12,
+                            text_color='yellow',
+                            shape_opacity=0.8
                         )
+                        logger.info(f"SceneViewer3D: Label ajouté pour {object_name} à {position}")
+                except Exception as e:
+                    logger.warning(f"SceneViewer3D: Impossible d'ajouter le label pour {object_name}: {e}")
+                        
         except Exception as e:
             logger.error(f"Erreur lors de l'ajout des étiquettes: {e}")
+
+    # === NOUVELLES MÉTHODES POUR LA NAVIGATION ET SURBRILLANCE D'OBJETS ===
+    
+    def highlight_object(self, object_name, highlight=True):
+        """Met en surbrillance un objet spécifique dans la scène."""
+        try:
+            if not hasattr(self, 'scene') or not self.scene:
+                return False
+                
+            # Trouver l'acteur correspondant à l'objet
+            actor_found = False
+            
+            # Méthode 1: Chercher par nom de mesh
+            if hasattr(self.scene, 'get_mesh_names'):
+                mesh_names = self.scene.get_mesh_names()
+                if object_name in mesh_names:
+                    mesh_index = mesh_names.index(object_name)
+                    if mesh_index < len(self._scene_actors):
+                        actor = self._scene_actors[mesh_index]
+                        self._apply_highlight_to_actor(actor, highlight)
+                        actor_found = True
+            
+            # Méthode 2: Si pas trouvé, chercher l'acteur principal
+            if not actor_found and object_name in ["main_scene", "unnamed_objects"]:
+                if self.mesh_actor:
+                    self._apply_highlight_to_actor(self.mesh_actor, highlight)
+                    actor_found = True
+                elif len(self._scene_actors) > 0:
+                    # Surligner tous les acteurs de scène
+                    for actor in self._scene_actors:
+                        self._apply_highlight_to_actor(actor, highlight)
+                    actor_found = True
+            
+            if actor_found:
+                # Ajouter des flèches pointant vers l'objet si mise en surbrillance
+                if highlight:
+                    self._add_navigation_arrows(object_name)
+                else:
+                    self._remove_navigation_arrows(object_name)
+                    
+                # Rafraîchir l'affichage
+                if hasattr(self.plotter, 'render'):
+                    self.plotter.render()
+                    
+                return True
+                
+        except Exception as e:
+            logger.error(f"Erreur lors de la surbrillance de l'objet {object_name}: {e}")
+            
+        return False
+    
+    def _apply_highlight_to_actor(self, actor, highlight=True):
+        """Applique ou retire la surbrillance sur un acteur."""
+        try:
+            if not actor:
+                return
+                
+            if highlight:
+                # Sauvegarder la couleur originale dans notre dictionnaire externe
+                actor_id = id(actor)
+                if actor_id not in self.actor_original_colors:
+                    self.actor_original_colors[actor_id] = actor.GetProperty().GetColor()
+                
+                # Appliquer la couleur de surbrillance (rouge/jaune pulsant)
+                actor.GetProperty().SetColor(1.0, 0.8, 0.0)  # Jaune/Orange
+                actor.GetProperty().SetOpacity(0.9)
+                
+                # Ajouter un effet de bordure
+                actor.GetProperty().SetEdgeVisibility(True)
+                actor.GetProperty().SetEdgeColor(1.0, 0.0, 0.0)  # Rouge pour les bordures
+                actor.GetProperty().SetLineWidth(2)
+                
+            else:
+                # Restaurer la couleur originale depuis notre dictionnaire
+                actor_id = id(actor)
+                if actor_id in self.actor_original_colors:
+                    actor.GetProperty().SetColor(self.actor_original_colors[actor_id])
+                    # Ne pas supprimer la couleur car elle peut être réutilisée
+                else:
+                    # Couleur par défaut si pas de couleur sauvegardée
+                    actor.GetProperty().SetColor(0.8, 0.8, 0.8)
+                
+                actor.GetProperty().SetOpacity(1.0)
+                actor.GetProperty().SetEdgeVisibility(False)
+                
+        except Exception as e:
+            logger.error(f"Erreur lors de l'application de la surbrillance: {e}")
+    
+    def _add_navigation_arrows(self, object_name):
+        """Ajoute des flèches pointant vers l'objet."""
+        try:
+            # Retirer les anciennes flèches pour cet objet
+            self._remove_navigation_arrows(object_name)
+            
+            # Calculer la position de l'objet
+            object_center = self._get_object_center(object_name)
+            if object_center is None:
+                return
+                
+            # Créer des flèches pointant vers l'objet depuis différentes directions
+            arrow_directions = [
+                [1, 0, 0],   # Droite
+                [-1, 0, 0],  # Gauche  
+                [0, 1, 0],   # Devant
+                [0, -1, 0],  # Derrière
+                [0, 0, 1],   # Dessus
+            ]
+            
+            arrow_actors = []
+            arrow_distance = 50.0  # Distance des flèches par rapport à l'objet
+            
+            for direction in arrow_directions:
+                # Position de départ de la flèche
+                start_pos = [
+                    object_center[0] + direction[0] * arrow_distance,
+                    object_center[1] + direction[1] * arrow_distance,
+                    object_center[2] + direction[2] * arrow_distance
+                ]
+                
+                # Créer une flèche pointant vers l'objet
+                arrow = pv.Arrow(start=start_pos, direction=[-d for d in direction], scale=20.0)
+                
+                # Ajouter la flèche à la scène
+                arrow_actor = self.plotter.add_mesh(
+                    arrow,
+                    color='red',
+                    opacity=0.8,
+                    name=f"arrow_{object_name}_{len(arrow_actors)}"
+                )
+                arrow_actors.append(arrow_actor)
+            
+            # Sauvegarder les acteurs de flèches pour pouvoir les supprimer plus tard
+            if not hasattr(self, '_navigation_arrows'):
+                self._navigation_arrows = {}
+            self._navigation_arrows[object_name] = arrow_actors
+            
+            # Ajouter un texte flottant au-dessus de l'objet
+            text_pos = [object_center[0], object_center[1], object_center[2] + 30]
+            text_actor = self.plotter.add_point_labels(
+                [text_pos],
+                [f"📍 {object_name}"],
+                point_size=0,
+                font_size=12,
+                text_color='red',
+                shape_opacity=0.8,
+                name=f"label_{object_name}"
+            )
+            
+            if object_name not in self._navigation_arrows:
+                self._navigation_arrows[object_name] = []
+            self._navigation_arrows[object_name].append(text_actor)
+            
+        except Exception as e:
+            logger.error(f"Erreur lors de l'ajout des flèches de navigation: {e}")
+    
+    def _remove_navigation_arrows(self, object_name):
+        """Supprime les flèches de navigation pour un objet."""
+        try:
+            if not hasattr(self, '_navigation_arrows'):
+                return
+                
+            if object_name in self._navigation_arrows:
+                # Supprimer tous les acteurs de flèches/labels pour cet objet
+                for actor in self._navigation_arrows[object_name]:
+                    try:
+                        if hasattr(self.plotter, 'remove_actor'):
+                            self.plotter.remove_actor(actor)
+                        else:
+                            # Méthode alternative
+                            actor.SetVisibility(False)
+                    except:
+                        pass
+                
+                # Nettoyer la liste
+                del self._navigation_arrows[object_name]
+                
+        except Exception as e:
+            logger.error(f"Erreur lors de la suppression des flèches: {e}")
+    
+    def _get_object_center(self, object_name):
+        """Obtient le centre d'un objet."""
+        try:
+            if not hasattr(self, 'scene') or not self.scene:
+                return None
+                
+            # Méthode 1: Utiliser les informations de la scène
+            if hasattr(self.scene, 'get_mesh_names'):
+                mesh_names = self.scene.get_mesh_names()
+                if object_name in mesh_names:
+                    mesh_index = mesh_names.index(object_name)
+                    if mesh_index < len(self._scene_actors):
+                        actor = self._scene_actors[mesh_index]
+                        bounds = actor.GetBounds()
+                        return [
+                            (bounds[0] + bounds[1]) / 2,
+                            (bounds[2] + bounds[3]) / 2,
+                            (bounds[4] + bounds[5]) / 2
+                        ]
+            
+            # Méthode 2: Utiliser le mesh principal
+            if object_name in ["main_scene", "unnamed_objects"]:
+                if hasattr(self.scene, 'get_center'):
+                    return list(self.scene.get_center())
+                elif self.mesh_actor:
+                    bounds = self.mesh_actor.GetBounds()
+                    return [
+                        (bounds[0] + bounds[1]) / 2,
+                        (bounds[2] + bounds[3]) / 2,
+                        (bounds[4] + bounds[5]) / 2
+                    ]
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"Erreur lors du calcul du centre de l'objet: {e}")
+            return None
+    
+    def center_on_object(self, object_name):
+        """Centre la caméra sur un objet spécifique."""
+        try:
+            object_center = self._get_object_center(object_name)
+            if object_center is None:
+                return False
+                
+            # Centrer la caméra sur l'objet
+            self.plotter.camera_position = 'xy'  # Vue de dessus d'abord
+            self.plotter.camera.SetFocalPoint(object_center)
+            
+            # Ajuster la distance de la caméra pour bien voir l'objet
+            camera_distance = 100.0  # Distance par défaut
+            camera_pos = [
+                object_center[0],
+                object_center[1] - camera_distance,
+                object_center[2] + camera_distance/2
+            ]
+            self.plotter.camera.SetPosition(camera_pos)
+            
+            # Rafraîchir l'affichage
+            if hasattr(self.plotter, 'render'):
+                self.plotter.render()
+                
+            return True
+            
+        except Exception as e:
+            logger.error(f"Erreur lors du centrage sur l'objet: {e}")
+            return False
+    
+    def clear_all_highlights(self):
+        """Efface toutes les surbrillances et flèches de navigation."""
+        try:
+            # Supprimer toutes les flèches de navigation
+            if hasattr(self, '_navigation_arrows'):
+                for object_name in list(self._navigation_arrows.keys()):
+                    self._remove_navigation_arrows(object_name)
+            
+            # Restaurer les couleurs originales de tous les acteurs
+            all_actors = []
+            if self.mesh_actor:
+                all_actors.append(self.mesh_actor)
+            all_actors.extend(self._scene_actors)
+            
+            for actor in all_actors:
+                self._apply_highlight_to_actor(actor, highlight=False)
+            
+            # Rafraîchir l'affichage
+            if hasattr(self.plotter, 'render'):
+                self.plotter.render()
+                
+        except Exception as e:
+            logger.error(f"Erreur lors de l'effacement des surbrillances: {e}")
+    
+    def apply_material_color(self, object_name, material_properties):
+        """Applique la couleur du matériau à l'objet dans la visualisation 3D."""
+        logger.info(f"apply_material_color appelée pour {object_name} avec {material_properties}")
+        try:
+            # Extraire la couleur depuis les propriétés du matériau
+            color_hex = material_properties.get('color', '#FF6464')
+            logger.info(f"Couleur extraite: {color_hex}")
+            
+            # Convertir la couleur hex en RGB normalisé (0-1)
+            if color_hex.startswith('#'):
+                hex_color = color_hex[1:]
+                if len(hex_color) == 6:
+                    r = int(hex_color[0:2], 16) / 255.0
+                    g = int(hex_color[2:4], 16) / 255.0 
+                    b = int(hex_color[4:6], 16) / 255.0
+                    color_rgb = [r, g, b]
+                else:
+                    color_rgb = [1.0, 0.4, 0.4]  # Rouge par défaut
+            else:
+                color_rgb = [1.0, 0.4, 0.4]  # Rouge par défaut
+            
+            logger.info(f"Couleur RGB normalisée: {color_rgb}")
+            
+            # NOUVEAU: Appliquer la couleur à l'acteur spécifique par nom d'objet
+            color_applied = False
+            
+            # Chercher l'acteur correspondant à l'objet
+            if hasattr(self, 'object_actors') and object_name in self.object_actors:
+                try:
+                    actor = self.object_actors[object_name]
+                    actor.GetProperty().SetColor(color_rgb)
+                    color_applied = True
+                    logger.info(f"Couleur appliquée à l'acteur spécifique {object_name}: {color_rgb}")
+                except Exception as e:
+                    logger.warning(f"Impossible d'appliquer la couleur à l'acteur {object_name}: {e}")
+            else:
+                logger.warning(f"Acteur non trouvé pour {object_name}")
+                
+                # Fallback: utiliser l'ancien système si pas d'acteurs séparés
+                if self.mesh_actor:
+                    try:
+                        self.mesh_actor.GetProperty().SetColor(color_rgb)
+                        color_applied = True
+                        logger.info(f"Couleur appliquée à l'acteur principal (fallback): {color_rgb}")
+                    except Exception as e:
+                        logger.warning(f"Impossible d'appliquer la couleur à l'acteur principal: {e}")
+                
+                # Vérifier les acteurs de scène
+                logger.info(f"Nombre d'acteurs de scène: {len(self._scene_actors)}")
+                for i, actor in enumerate(self._scene_actors):
+                    try:
+                        actor.GetProperty().SetColor(color_rgb)
+                        color_applied = True
+                        logger.info(f"Couleur appliquée à l'acteur de scène {i}: {color_rgb}")
+                    except Exception as e:
+                        logger.warning(f"Impossible d'appliquer la couleur à l'acteur de scène {i}: {e}")
+            
+            # Rafraîchir l'affichage
+            if color_applied and hasattr(self.plotter, 'render'):
+                self.plotter.render()
+                logger.info(f"Rendu mis à jour pour {object_name}: {color_hex}")
+            else:
+                logger.warning(f"Aucun acteur trouvé pour appliquer la couleur à {object_name}")
+                
+        except Exception as e:
+            logger.error(f"Erreur lors de l'application de la couleur du matériau: {e}")

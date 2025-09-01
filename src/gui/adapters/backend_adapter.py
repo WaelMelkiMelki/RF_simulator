@@ -1,6 +1,15 @@
 """
-Adaptateur entre l'interface graphique et le backend de l'application.
-Fournit une API simplifiée pour l'interface utilisateur.
+Adaptateur Backend - NETDATA INNOVATION
+COUCHE PRESENTATION - Interface avec Application Layer
+
+Responsabilités :
+- Communication entre GUI et SimulationOrchestrator
+- Adaptation des signaux PyQt6 vers les services Application
+- Gestion des états d'interface utilisateur
+- Validation des entrées utilisateur
+
+Conforme à l'architecture NETDATA :
+GUI → BackendAdapter → SimulationOrchestrator → Domain Services → Infrastructure
 """
 
 import logging
@@ -37,6 +46,7 @@ class BackendAdapter(QObject):
     simulation_started = pyqtSignal()
     simulation_progress = pyqtSignal(int, str)  # Progrès (0-100), message
     simulation_finished = pyqtSignal(object)  # Émet les résultats
+    simulation_completed = pyqtSignal(dict)  # Émet les résultats de simulation complétés
     error_occurred = pyqtSignal(str)  # Émet un message d'erreur
     
     def __init__(self):
@@ -51,6 +61,22 @@ class BackendAdapter(QObject):
         self.selected_antennas = []
         self.last_simulation_results = None
         logger.info("BackendAdapter: Initialisation terminée")
+
+    def set_orchestrator(self, orchestrator):
+        """Configure l'orchestrateur de simulation - NETDATA INNOVATION."""
+        self.orchestrator = orchestrator
+        
+        # Connecter les signaux de l'orchestrateur si disponibles
+        if hasattr(orchestrator, 'progress_updated'):
+            orchestrator.progress_updated.connect(self.simulation_progress.emit)
+        
+        if hasattr(orchestrator, 'simulation_completed'):
+            orchestrator.simulation_completed.connect(self.simulation_finished.emit)
+        
+        if hasattr(orchestrator, 'error_occurred'):
+            orchestrator.error_occurred.connect(self.error_occurred.emit)
+        
+        logger.info("BackendAdapter: Orchestrateur NETDATA configuré")
 
     def load_scene_async(self, file_path):
         """Charge une scène de manière asynchrone."""
@@ -166,6 +192,7 @@ class BackendAdapter(QObject):
 
             self.last_simulation_results = simulation_data
             self.simulation_finished.emit(simulation_data)
+            self.simulation_completed.emit(simulation_data)  # Signal pour exemple
             logger.info("BackendAdapter: Simulation terminée avec succès")
         except Exception as e:
             error_msg = f"Erreur lors du démarrage de la simulation: {e}"
