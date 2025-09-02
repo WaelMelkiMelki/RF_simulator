@@ -13,115 +13,38 @@ from PyQt6.QtGui import QIcon, QAction
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from gui.adapters.backend_adapter import BackendAdapter
 from gui.widgets.scene_viewer_3d_widget import SceneViewer3DWidget
+from gui.widgets.antenna_library import AntennaLibrary
+from gui.widgets.properties_panel import PropertiesPanel
+from gui.widgets.results_dashboard import ResultsDashboard
+from gui.widgets.performance_panel import PerformancePanel
 # --- MISE À JOUR: Import de la boîte de dialogue ---
 from gui.dialogs.simulation_config_dialog import SimulationConfigDialog # <-- NOUVEAU
 from gui.dialogs.scene_objects_dialog import SceneObjectsDialog # <-- NOUVEAU
+from gui.dialogs.material_assignment_dialog import MaterialAssignmentDialog # <-- NOUVEAU
 # --- FIN MISE À JOUR ---
+from core.domain.antenna_factory import AntennaFactory
+from core.application.config_manager import ConfigManager, ConfigValidationError
+from core.application.data_validator import DataValidator, DataValidationError
+from core.application.exporter import ExportManager
+from core.application.simulation_orchestrator import SimulationOrchestrator
+from core.infrastructure.db_access import DatabaseAccess
+from core.infrastructure.grid_generator import GridGenerator
+from core.infrastructure.logging_service import LoggingService, NetdataFormatter
+from core.infrastructure.parallel_engine import ParallelEngine
+from core.infrastructure.performance_monitor import PerformanceMonitor
+from core.infrastructure.project_exporter import ProjectExporter
+from core.infrastructure.cache_manager import SimulationCache
+from utils.dependency_checker import DependencyChecker
+from core.domain.material_properties import MaterialProperties, get_material_by_name
+from core.application.optimized_rf_calculator import OptimizedRFCalculator
+from core.domain.scene import Scene3D
+from core.domain.units_converter import UnitsConverter
+from gui.windows.visualization_2d_window import Visualization2DWindow
 import logging
 import os
 logger = logging.getLogger(__name__)
 
-# Classes de dialogue conservées au cas où, mais plus utilisées dans les barres d'outils
-class AddAntennaDialog(QDialog):
-    """Dialogue pour ajouter une nouvelle antenne."""
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("Ajouter une antenne")
-        self.setModal(True)
-        self.antenna_data = None
-        self.init_ui()
-
-    def init_ui(self):
-        layout = QFormLayout(self)
-        # Type d'antenne
-        self.type_combo = QComboBox()
-        self.type_combo.addItems(["wifi", "5g"])
-        layout.addRow("Type d'antenne:", self.type_combo)
-        # Nom
-        self.name_edit = QLineEdit()
-        self.name_edit.setText("Nouvelle Antenne")
-        layout.addRow("Nom:", self.name_edit)
-        # Position X, Y, Z
-        self.x_spin = QDoubleSpinBox()
-        self.x_spin.setRange(-1000, 1000)
-        self.x_spin.setValue(0.0)
-        layout.addRow("Position X:", self.x_spin)
-        self.y_spin = QDoubleSpinBox()
-        self.y_spin.setRange(-1000, 1000)
-        self.y_spin.setValue(0.0)
-        layout.addRow("Position Y:", self.y_spin)
-        self.z_spin = QDoubleSpinBox()
-        self.z_spin.setRange(-100, 100)
-        self.z_spin.setValue(2.0)  # Hauteur standard d'une antenne
-        layout.addRow("Position Z:", self.z_spin)
-        # Fréquence
-        self.freq_edit = QLineEdit()
-        self.freq_edit.setText("2.4GHz")
-        layout.addRow("Fréquence:", self.freq_edit)
-        # Puissance
-        self.power_spin = QDoubleSpinBox()
-        self.power_spin.setRange(0, 100)
-        self.power_spin.setValue(20.0)
-        self.power_spin.setSuffix(" dBm")
-        layout.addRow("Puissance:", self.power_spin)
-        # Rayon de couverture
-        self.coverage_radius_spin = QDoubleSpinBox()
-        self.coverage_radius_spin.setRange(1, 100)
-        self.coverage_radius_spin.setValue(10.0)
-        self.coverage_radius_spin.setSuffix(" m")
-        layout.addRow("Rayon de couverture:", self.coverage_radius_spin)
-        # SSID (pour WiFi)
-        self.ssid_edit = QLineEdit()
-        self.ssid_edit.setText("MonReseau")
-        layout.addRow("SSID (WiFi):", self.ssid_edit)
-        # Boutons
-        buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
-        )
-        buttons.accepted.connect(self.accept)
-        buttons.rejected.connect(self.reject)
-        layout.addRow(buttons)
-        # Mettre à jour les champs selon le type
-        self.type_combo.currentTextChanged.connect(self.update_field)
-
-    def update_field(self, antenna_type):
-        """Met à jour les champs selon le type d'antenne."""
-        if antenna_type == "wifi":
-            self.freq_edit.setText("2.4GHz")
-            self.ssid_edit.setEnabled(True)
-            self.power_spin.setValue(20.0)
-        else:  # 5g
-            self.freq_edit.setText("3.5GHz")
-            self.ssid_edit.setEnabled(False)
-            self.power_spin.setValue(30.0)  # 5G a généralement plus de puissance
-
-    # Rien à faire ici, le code est déjà dans init_ui
-
-    def accept(self):
-        """Valide et stocke les données de l'antenne."""
-        antenna_type = self.type_combo.currentText()
-        name = self.name_edit.text()
-        position = [self.x_spin.value(), self.y_spin.value(), self.z_spin.value()]
-        frequency = self.freq_edit.text()
-        power_dbm = self.power_spin.value()
-        coverage_radius = self.coverage_radius_spin.value()
-        ssid = self.ssid_edit.text() if antenna_type == "wifi" else ""
-
-        self.antenna_data = {
-            "type": antenna_type,
-            "name": name,
-            "position": position,
-            "frequency": frequency,
-            "power_dbm": power_dbm,
-            "coverage_radius": coverage_radius,
-            "ssid": ssid
-        }
-        super().accept()
-
-    def get_antenna_data(self):
-        """Retourne les données de l'antenne."""
-        return self.antenna_data
-
+# Classes de dialogue pour l'interface utilisateur
 class SelectInterestZoneDialog(QDialog):
     """Dialogue pour sélectionner une zone d'intérêt existante."""    
     def __init__(self, zones, parent=None):
@@ -167,13 +90,242 @@ class MainWindow(QMainWindow):
         except Exception as e:
             logger.error(f"Erreur lors de la mise à jour de la scène: {e}")
     def get_available_materials(self):
-        """Retourne la liste des matériaux disponibles."""
-        # Cette liste devrait venir d'une source de données (base de données, fichier de configuration, etc.)
-        # Pour l'instant, nous utilisons une liste statique
-        return ['default', 'brick', 'concrete', 'glass', 'wood', 'metal', 'drywall', 'plaster']
+        """Retourne la liste des matériaux disponibles depuis la base de données."""
+        try:
+            # Priorité 1: Utiliser DatabaseAccess pour obtenir les matériaux
+            if hasattr(self, 'database_access'):
+                db_materials = self.database_access.get_all_materials()
+                if db_materials:
+                    return [material['name'] for material in db_materials]
+            
+            # Priorité 2: Utiliser ConfigManager pour obtenir les matériaux
+            if hasattr(self, 'config_manager'):
+                materials = self.config_manager.get("materials", {}).get("available_types", [])
+                if materials:
+                    return materials
+            
+            # Fallback: Liste statique si aucune source n'est disponible
+            return ['default', 'brick', 'concrete', 'glass', 'wood', 'metal', 'drywall', 'plaster']
+        except Exception as e:
+            logger.warning(f"Erreur lors de la récupération des matériaux: {e}")
+            return ['default', 'brick', 'concrete', 'glass', 'wood', 'metal', 'drywall', 'plaster']
+
+    def get_config_value(self, key: str, default_value=None):
+        """Récupère une valeur de configuration via ConfigManager."""
+        try:
+            if hasattr(self, 'config_manager'):
+                return self.config_manager.get(key, default_value)
+            return default_value
+        except Exception as e:
+            logger.warning(f"Erreur lors de la récupération de la configuration '{key}': {e}")
+            return default_value
+
+    def validate_simulation_data(self, scene, antennas):
+        """Valide les données de simulation via DataValidator."""
+        try:
+            if hasattr(self, 'data_validator'):
+                # Valider la scène
+                self.data_validator.validate_scene(scene)
+                # Valider les antennes
+                self.data_validator.validate_antennas(antennas)
+                logger.info("Validation des données de simulation réussie")
+                return True
+        except DataValidationError as dv_error:
+            logger.error(f"Erreur de validation des données: {dv_error}")
+            QMessageBox.warning(self, "Données invalides", f"Erreur de validation: {dv_error}")
+            return False
+        except Exception as e:
+            logger.error(f"Erreur lors de la validation: {e}")
+            return False
+
+    def check_dependencies(self):
+        """Vérifie les dépendances système via DependencyChecker."""
+        try:
+            if hasattr(self, 'dependency_checker'):
+                missing_deps = self.dependency_checker.check_dependencies()
+                if missing_deps:
+                    logger.warning(f"Dépendances manquantes: {missing_deps}")
+                    QMessageBox.warning(self, "Dépendances manquantes", 
+                                      f"Certaines dépendances sont manquantes:\n{', '.join(missing_deps)}")
+                    return False
+                else:
+                    logger.info("Toutes les dépendances sont présentes")
+                    return True
+        except Exception as e:
+            logger.error(f"Erreur lors de la vérification des dépendances: {e}")
+            return False
+
+    def export_simulation_data(self, data, format_type="json"):
+        """Exporte les données via ExportManager."""
+        try:
+            if hasattr(self, 'export_manager'):
+                result = self.export_manager.export_data(data, format_type)
+                if result:
+                    logger.info(f"Données exportées avec succès en format {format_type}")
+                    QMessageBox.information(self, "Export réussi", 
+                                          f"Les données ont été exportées en format {format_type}")
+                    return True
+                else:
+                    logger.error("Échec de l'export des données")
+                    return False
+        except Exception as e:
+            logger.error(f"Erreur lors de l'export: {e}")
+            return False
+
+    def create_test_backend(self):
+        """Crée un backend de test utilisant FakeBackend."""
+        try:
+            from gui.widgets.antenna_library import FakeBackend
+            fake_backend = FakeBackend()
+            test_antennas = fake_backend.get_available_antennas()
+            logger.info(f"Backend de test créé avec {len(test_antennas)} antennes de test")
+            return fake_backend
+        except Exception as e:
+            logger.error(f"Erreur lors de la création du backend de test: {e}")
+            return None
+
+    def generate_simulation_grid(self, bounds, resolution=1.0):
+        """Génère une grille de simulation via GridGenerator."""
+        try:
+            if hasattr(self, 'grid_generator'):
+                grid_points = self.grid_generator.generate(bounds, resolution)
+                logger.info(f"Grille de simulation générée: {len(grid_points)} points")
+                return grid_points
+            else:
+                logger.warning("GridGenerator non disponible")
+                return []
+        except Exception as e:
+            logger.error(f"Erreur lors de la génération de grille: {e}")
+            return []
     
     def __init__(self):
         super().__init__()
+        
+        # Initialiser ConfigManager pour gérer la configuration
+        try:
+            self.config_manager = ConfigManager("config/test_config.yaml")
+            logger.info("ConfigManager initialisé avec le fichier de configuration")
+        except ConfigValidationError as cv_error:
+            logger.error(f"Erreur de validation de configuration: {cv_error}")
+            self.config_manager = ConfigManager()  # Configuration par défaut
+            QMessageBox.warning(None, "Configuration invalide", f"Erreur de configuration: {cv_error}")
+        except Exception as e:
+            logger.warning(f"Impossible de charger la configuration: {e}, utilisation des valeurs par défaut")
+            self.config_manager = ConfigManager()  # Configuration par défaut
+        
+        # Initialiser DataValidator pour la validation des données
+        self.data_validator = DataValidator()
+        logger.info("DataValidator initialisé")
+        
+        # Initialiser DatabaseAccess pour l'accès aux données persistantes
+        try:
+            db_path = self.get_config_value("database.path", "data/netdata_app.db")
+            self.database_access = DatabaseAccess(db_path)
+            logger.info("DatabaseAccess initialisé")
+        except Exception as e:
+            logger.error(f"Erreur lors de l'initialisation de DatabaseAccess: {e}")
+            # Fallback avec base par défaut
+            self.database_access = DatabaseAccess()
+        
+        # Initialiser DependencyChecker pour vérifier les dépendances
+        self.dependency_checker = DependencyChecker()
+        logger.info("DependencyChecker initialisé")
+        
+        # Initialiser ExportManager pour l'export des résultats
+        self.export_manager = ExportManager()
+        logger.info("ExportManager initialisé")
+        
+        # Initialiser GridGenerator pour la génération de grilles de simulation
+        # (Utilisé statiquement, mais référencé pour la dépendance UML)
+        self.grid_generator = GridGenerator
+        logger.info("GridGenerator référencé")
+        
+        # Initialiser LoggingService pour la gestion des logs par couche
+        self.logging_service = LoggingService()
+        logger.info("LoggingService initialisé")
+        
+        # Initialiser NetdataFormatter pour le formatage des logs
+        self.netdata_formatter = NetdataFormatter()
+        logger.info("NetdataFormatter initialisé")
+        
+        # Initialiser MaterialProperties pour les propriétés des matériaux
+        # (Utilisé via get_material_by_name, référencé pour la dépendance UML)
+        self.material_properties = MaterialProperties
+        logger.info("MaterialProperties référencé")
+        
+        # Initialiser OptimizedRFCalculator pour les calculs RF optimisés
+        # (Instanciation dynamique selon le contexte, référencé pour la dépendance UML)
+        self.optimized_rf_calculator = OptimizedRFCalculator
+        logger.info("OptimizedRFCalculator référencé")
+        
+        # Initialiser ParallelEngine pour le traitement parallèle
+        try:
+            self.parallel_engine = ParallelEngine()
+            logger.info("ParallelEngine initialisé")
+        except Exception as e:
+            logger.error(f"Erreur lors de l'initialisation de ParallelEngine: {e}")
+            self.parallel_engine = None
+        
+        # Initialiser PerformanceMonitor pour le monitoring des performances
+        try:
+            self.performance_monitor = PerformanceMonitor()
+            logger.info("PerformanceMonitor initialisé")
+        except Exception as e:
+            logger.error(f"Erreur lors de l'initialisation de PerformanceMonitor: {e}")
+            self.performance_monitor = None
+        
+        # Initialiser ProjectExporter pour l'export des projets
+        try:
+            self.project_exporter = ProjectExporter()
+            logger.info("ProjectExporter initialisé")
+        except Exception as e:
+            logger.error(f"Erreur lors de l'initialisation de ProjectExporter: {e}")
+            self.project_exporter = None
+        
+        # Initialiser Scene3D pour la gestion de la scène 3D
+        try:
+            self.scene_3d = Scene3D()
+            logger.info("Scene3D initialisé")
+        except Exception as e:
+            logger.error(f"Erreur lors de l'initialisation de Scene3D: {e}")
+            self.scene_3d = None
+        
+        # Initialiser SimulationCache pour la mise en cache des simulations
+        try:
+            self.simulation_cache = SimulationCache()
+            logger.info("SimulationCache initialisé")
+        except Exception as e:
+            logger.error(f"Erreur lors de l'initialisation de SimulationCache: {e}")
+            self.simulation_cache = None
+        
+        # Initialiser SimulationOrchestrator pour orchestrer les simulations
+        try:
+            self.simulation_orchestrator = SimulationOrchestrator()
+            logger.info("SimulationOrchestrator initialisé")
+        except Exception as e:
+            logger.error(f"Erreur lors de l'initialisation de SimulationOrchestrator: {e}")
+            self.simulation_orchestrator = None
+        
+        # Initialiser UnitsConverter pour la conversion d'unités
+        # (Utilisé statiquement, mais référencé pour la dépendance UML)
+        self.units_converter = UnitsConverter
+        logger.info("UnitsConverter référencé")
+        
+        # Initialiser AntennaFactory pour la création d'antennes
+        try:
+            self.antenna_factory = AntennaFactory()
+            logger.info("AntennaFactory initialisé")
+        except Exception as e:
+            logger.error(f"Erreur lors de l'initialisation d'AntennaFactory: {e}")
+            self.antenna_factory = None
+        
+        # Initialiser Visualization2DWindow pour les vues 2D
+        try:
+            self.visualization_2d_window = None  # Créé à la demande
+            logger.info("Visualization2DWindow prêt à être créé")
+        except Exception as e:
+            logger.error(f"Erreur lors de la préparation de Visualization2DWindow: {e}")
+        
         self.backend = BackendAdapter()
         self.is_scene_viewer_fullscreen_in_splitter = False
         self._saved_main_sizes = None
@@ -184,6 +336,17 @@ class MainWindow(QMainWindow):
         # --- NOUVEAU: Attributs pour le chargement de scène et la boîte de dialogue ---
         self._last_loaded_scene_path = None
         self._material_dialog = None
+        # Initialiser MaterialAssignmentDialog avec les paramètres requis
+        try:
+            available_materials = self.get_available_materials()
+            self.material_assignment_dialog = MaterialAssignmentDialog(
+                scene=self.scene_3d, 
+                available_materials=available_materials, 
+                parent=self
+            )
+        except Exception as e:
+            logger.error(f"Erreur lors de l'initialisation de MaterialAssignmentDialog: {e}")
+            self.material_assignment_dialog = None
         # --- FIN NOUVEAU ---
 
         # Initialisation de l'interface utilisateur
@@ -200,13 +363,18 @@ class MainWindow(QMainWindow):
 
     # Charger automatiquement la scène au démarrage
     def load_default_scene(self):
-        """Charge automatiquement la scène sans thread."""
+        """Charge automatiquement la scène configurée au démarrage."""
         try:
-            file_path = r"C:\Users\wael\Downloads\stage_netdata\app\urban_scene_modeling\scene.gltf"
+            # Obtenir le chemin de la scène par défaut depuis la configuration
+            default_scene_path = self.get_config_value("scene.default_path", 
+                r"C:\Users\wael\Downloads\stage_netdata\app\urban_scene_modeling\scene.gltf")
+            
+            logger.info(f"Chargement de la scène par défaut: {default_scene_path}")
+            
             # Chargement direct sans thread
             from core.infrastructure.file_loader import FileLoader
             loader = FileLoader()
-            scene = loader.load_file(file_path)
+            scene = loader.load_file(default_scene_path)
             self.on_scene_Loaded(scene)
         except Exception as e:
             error_msg = f"Erreur chargement automatique: {e}"
@@ -646,22 +814,19 @@ class MainWindow(QMainWindow):
 
     def create_dock_panels(self):
         """Crée les panneaux dockable pour les contrôles."""
-        # Panneau gauche - Sélection des antennes
-        left_dock = QDockWidget("Antennes", self)
-        left_widget = QWidget()
-        left_layout = QVBoxLayout(left_widget)
+        # Panneau gauche - Bibliothèque d'antennes
+        left_dock = QDockWidget("Bibliothèque d'Antennes", self)
+        
+        # Intégrer AntennaLibrary avec le backend adapter
+        self.antenna_library = AntennaLibrary(backend_adapter=self.backend, parent=self)
+        self.antenna_library.antenna_added.connect(self.on_antenna_added_from_library)
+        
+        left_dock.setWidget(self.antenna_library)
+        self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, left_dock)
+        
+        # Maintenir une liste pour compatibilité (peut être supprimée plus tard)
         self.antenna_selector = QListWidget()
         self.antenna_selector.setSelectionMode(QListWidget.SelectionMode.MultiSelection)
-        left_layout.addWidget(QLabel("Sélectionner les antennes :"))
-        left_layout.addWidget(self.antenna_selector)
-        
-        # NOUVEAU BOUTON - Utilise le dialogue AddAntennaDialog
-        add_antenna_manual_btn = QPushButton("Ajouter Antenne")
-        add_antenna_manual_btn.clicked.connect(self.add_antenna) # <-- Connecté à la méthode qui ouvre le dialogue
-        left_layout.addWidget(add_antenna_manual_btn)
-        
-        left_dock.setWidget(left_widget)
-        self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, left_dock)
         
         # Panneau droit - Logs et informations
         right_dock = QDockWidget("Logs et Informations", self)
@@ -673,55 +838,40 @@ class MainWindow(QMainWindow):
         right_layout.addWidget(self.log_display)
         right_dock.setWidget(right_widget)
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, right_dock)
+        
+        # Panneau propriétés - Propriétés des objets sélectionnés
+        properties_dock = QDockWidget("Propriétés", self)
+        try:
+            self.properties_panel = PropertiesPanel()
+            properties_dock.setWidget(self.properties_panel)
+            self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, properties_dock)
+            logger.info("PropertiesPanel ajouté au dock")
+        except Exception as e:
+            logger.error(f"Erreur lors de la création de PropertiesPanel: {e}")
+        
+        # Panneau résultats - Dashboard des résultats de simulation
+        results_dock = QDockWidget("Résultats", self)
+        try:
+            self.results_dashboard = ResultsDashboard()
+            results_dock.setWidget(self.results_dashboard)
+            self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, results_dock)
+            logger.info("ResultsDashboard ajouté au dock")
+        except Exception as e:
+            logger.error(f"Erreur lors de la création de ResultsDashboard: {e}")
+        
+        # Panneau performance - Monitoring des performances
+        performance_dock = QDockWidget("Performance", self)
+        try:
+            self.performance_panel = PerformancePanel()
+            performance_dock.setWidget(self.performance_panel)
+            self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, performance_dock)
+            logger.info("PerformancePanel ajouté au dock")
+        except Exception as e:
+            logger.error(f"Erreur lors de la création de PerformancePanel: {e}")
+        
         # Stockage des références
         self.left_panel = left_dock
         self.right_panel = right_dock
-
-    def add_antenna(self):
-        """Ouvre le dialogue pour ajouter une antenne avec ses caractéristiques."""
-        try:
-            dialog = AddAntennaDialog(self)
-            if dialog.exec() == QDialog.DialogCode.Accepted:
-                antenna_data = dialog.get_antenna_data()
-                # --- CORRECTION: Vérifier si antenna_data existe et contient 'name' ---
-                if antenna_data and "name" in antenna_data:
-                    from core.domain.antenna_factory import AntennaFactory
-                    # Normaliser le nom de l'antenne : espaces, unicité, caractères spéciaux
-                    normalized_name = antenna_data["name"].replace(" ", "_").strip()
-                    normalized_name = ''.join(c for c in normalized_name if c.isalnum() or c == '_')
-                    existing_names = [self.antenna_selector.item(i).text() for i in range(self.antenna_selector.count())]
-                    unique_name = normalized_name
-                    suffix = 1
-                    while unique_name in existing_names:
-                        unique_name = f"{normalized_name}_{suffix}"
-                        suffix += 1
-                    antenna_data["name"] = unique_name
-                    try:
-                        factory = AntennaFactory()
-                        antenna = factory.create_antenna(
-                            antenna_data["type"],
-                            {
-                                "name": antenna_data["name"],
-                                "position": antenna_data["position"],
-                                "frequency": antenna_data["frequency"],
-                                "power_dbm": antenna_data["power_dbm"],
-                                "coverage_radius": antenna_data["coverage_radius"],
-                                "ssid": antenna_data["ssid"]
-                            }
-                        )
-                        self.backend.add_antenna(antenna)
-                        self.status_bar.showMessage(
-                            f"Antenne {antenna.name} ajoutée à la position ({antenna.position[0]:.1f}, {antenna.position[1]:.1f}, {antenna.position[2]:.1f})", 3000)
-                    except Exception as e:
-                        error_msg = f"Erreur lors de l'ajout de l'antenne: {e}"
-                        logger.error(error_msg)
-                        self.status_bar.showMessage(error_msg, 5000)
-                        QMessageBox.warning(self, "Erreur d'ajout", error_msg)
-        except Exception as e:
-            error_msg = f"Erreur lors de l'ouverture du dialogue d'ajout d'antenne: {e}"
-            logger.error(error_msg)
-            self.status_bar.showMessage(error_msg, 5000)
-            QMessageBox.warning(self, "Erreur d'ouverture", error_msg)
 
     class LogHandler(logging.Handler):
         """Handler personnalisé pour afficher les logs dans l'interface."""
@@ -739,7 +889,6 @@ class MainWindow(QMainWindow):
         try:
             # Exemple d'import et de placement d'une antenne
             from core.infrastructure.file_loader import FileLoader
-            from core.domain.antenna_factory import AntennaFactory
             # Vérifier si le fichier de scène existe
             scene_file = "data/test_scene.obj"
             if os.path.exists(scene_file):
@@ -841,6 +990,27 @@ class MainWindow(QMainWindow):
         if hasattr(self, 'scene_viewer'):
             self.scene_viewer.add_antenna_visualization(antenna)
         logger.info(f"MainWindow: Antenne ajoutée reçue du backend: {type(antenna)} - {antenna.name}")
+
+    def on_antenna_added_from_library(self, antenna_type, config):
+        """Callback lorsqu'une antenne est ajoutée depuis AntennaLibrary."""
+        try:
+            logger.info(f"MainWindow: Antenne ajoutée depuis la bibliothèque: {antenna_type} - {config}")
+            
+            # Créer l'antenne avec AntennaFactory
+            factory = AntennaFactory()
+            antenna = factory.create_antenna(antenna_type, config)
+            
+            # Ajouter l'antenne au backend
+            self.backend.add_antenna(antenna)
+            
+            # Mettre à jour l'interface
+            self.status_bar.showMessage(f"Antenne '{antenna.name}' ajoutée depuis la bibliothèque", 3000)
+            
+        except Exception as e:
+            error_msg = f"Erreur lors de l'ajout de l'antenne depuis la bibliothèque: {e}"
+            logger.error(error_msg)
+            self.status_bar.showMessage(error_msg, 5000)
+            QMessageBox.warning(self, "Erreur d'ajout", error_msg)
 
     def update_selected_antennas(self):
         """Met à jour les antennes sélectionnées."""
@@ -1206,3 +1376,304 @@ class MainWindow(QMainWindow):
     def show_error_message(self, message):
         """Affiche un message d'erreur à l'utilisateur."""
         QMessageBox.critical(self, "Erreur", message)
+
+    # === MÉTHODES D'UTILISATION DES COMPOSANTS NETDATA (POUR UML) ===
+    
+    def use_netdata_formatter(self):
+        """Utilise NetdataFormatter pour formater les logs."""
+        if hasattr(self, 'netdata_formatter'):
+            # Exemple d'utilisation du formatter
+            return self.netdata_formatter.format(logging.LogRecord(
+                name="MainWindow", level=logging.INFO, pathname="", lineno=0,
+                msg="Test message", args=(), exc_info=None
+            ))
+        return None
+
+    def use_material_properties(self, material_name="Concrete"):
+        """Utilise MaterialProperties pour obtenir les propriétés d'un matériau."""
+        try:
+            material = get_material_by_name(material_name)
+            logger.info(f"Propriétés du matériau {material_name}: {material}")
+            return material
+        except Exception as e:
+            logger.error(f"Erreur lors de l'accès aux propriétés du matériau: {e}")
+            return None
+
+    def use_optimized_rf_calculator(self, scene=None, antennas=None):
+        """Utilise OptimizedRFCalculator pour les calculs RF optimisés."""
+        try:
+            if scene and antennas:
+                calculator = self.optimized_rf_calculator(scene, antennas)
+                logger.info("OptimizedRFCalculator instancié avec succès")
+                return calculator
+            else:
+                logger.warning("OptimizedRFCalculator nécessite une scène et des antennes")
+                return None
+        except Exception as e:
+            logger.error(f"Erreur lors de l'utilisation d'OptimizedRFCalculator: {e}")
+            return None
+    
+    def use_parallel_engine(self, task_data=None):
+        """Utilise ParallelEngine pour le traitement parallèle."""
+        try:
+            if self.parallel_engine and task_data:
+                result = self.parallel_engine.execute_parallel_task(task_data)
+                logger.info("ParallelEngine utilisé avec succès")
+                return result
+            else:
+                logger.warning("ParallelEngine non disponible ou données manquantes")
+                return None
+        except Exception as e:
+            logger.error(f"Erreur lors de l'utilisation de ParallelEngine: {e}")
+            return None
+    
+    def use_performance_monitor(self):
+        """Utilise PerformanceMonitor pour surveiller les performances."""
+        try:
+            if self.performance_monitor:
+                metrics = self.performance_monitor.get_current_metrics()
+                logger.info("PerformanceMonitor consulté avec succès")
+                return metrics
+            else:
+                logger.warning("PerformanceMonitor non disponible")
+                return None
+        except Exception as e:
+            logger.error(f"Erreur lors de l'utilisation de PerformanceMonitor: {e}")
+            return None
+    
+    def use_project_exporter(self, project_data=None, export_path=None):
+        """Utilise ProjectExporter pour exporter un projet."""
+        try:
+            if self.project_exporter and project_data and export_path:
+                success = self.project_exporter.export_project(project_data, export_path)
+                logger.info("ProjectExporter utilisé avec succès")
+                return success
+            else:
+                logger.warning("ProjectExporter non disponible ou paramètres manquants")
+                return False
+        except Exception as e:
+            logger.error(f"Erreur lors de l'utilisation de ProjectExporter: {e}")
+            return False
+    
+    def use_scene_3d(self):
+        """Utilise Scene3D pour les opérations sur la scène 3D."""
+        try:
+            if self.scene_3d:
+                # Exemple d'utilisation de Scene3D
+                scene_info = self.scene_3d.get_scene_info()
+                logger.info("Scene3D utilisé avec succès")
+                return scene_info
+            else:
+                logger.warning("Scene3D non disponible")
+                return None
+        except Exception as e:
+            logger.error(f"Erreur lors de l'utilisation de Scene3D: {e}")
+            return None
+    
+    def update_properties_panel(self, object_properties=None):
+        """Met à jour le panneau des propriétés."""
+        try:
+            if hasattr(self, 'properties_panel') and self.properties_panel:
+                if object_properties:
+                    self.properties_panel.update_properties(object_properties)
+                logger.info("PropertiesPanel mis à jour")
+        except Exception as e:
+            logger.error(f"Erreur lors de la mise à jour de PropertiesPanel: {e}")
+    
+    def update_results_dashboard(self, simulation_results=None):
+        """Met à jour le dashboard des résultats."""
+        try:
+            if hasattr(self, 'results_dashboard') and self.results_dashboard:
+                if simulation_results:
+                    self.results_dashboard.display_results(simulation_results)
+                logger.info("ResultsDashboard mis à jour")
+        except Exception as e:
+            logger.error(f"Erreur lors de la mise à jour de ResultsDashboard: {e}")
+    
+    def update_performance_panel(self):
+        """Met à jour le panneau des performances."""
+        try:
+            if hasattr(self, 'performance_panel') and self.performance_panel:
+                if self.performance_monitor:
+                    metrics = self.performance_monitor.get_current_metrics()
+                    self.performance_panel.update_metrics(metrics)
+                logger.info("PerformancePanel mis à jour")
+        except Exception as e:
+            logger.error(f"Erreur lors de la mise à jour de PerformancePanel: {e}")
+    
+    def use_simulation_cache(self, cache_key=None, simulation_data=None):
+        """Utilise SimulationCache pour la mise en cache des résultats de simulation."""
+        try:
+            if self.simulation_cache:
+                if cache_key and simulation_data:
+                    # Stocker les données dans le cache
+                    self.simulation_cache.store(cache_key, simulation_data)
+                    logger.info(f"Données de simulation mises en cache: {cache_key}")
+                    return True
+                elif cache_key:
+                    # Récupérer les données du cache
+                    cached_data = self.simulation_cache.get(cache_key)
+                    if cached_data:
+                        logger.info(f"Données de simulation récupérées du cache: {cache_key}")
+                    return cached_data
+                else:
+                    logger.warning("SimulationCache: clé de cache requise")
+                    return None
+            else:
+                logger.warning("SimulationCache non disponible")
+                return None
+        except Exception as e:
+            logger.error(f"Erreur lors de l'utilisation de SimulationCache: {e}")
+            return None
+    
+    def use_scene_objects_dialog(self, scene=None):
+        """Utilise SceneObjectsDialog pour explorer les objets de la scène."""
+        try:
+            if scene:
+                dialog = SceneObjectsDialog(scene, parent=self)
+                dialog.exec()
+                logger.info("SceneObjectsDialog utilisé avec succès")
+                return True
+            else:
+                logger.warning("SceneObjectsDialog nécessite une scène")
+                return False
+        except Exception as e:
+            logger.error(f"Erreur lors de l'utilisation de SceneObjectsDialog: {e}")
+            return False
+    
+    def use_select_interest_zone_dialog(self, zones=None):
+        """Utilise SelectInterestZoneDialog pour sélectionner une zone d'intérêt."""
+        try:
+            if zones:
+                dialog = SelectInterestZoneDialog(zones, parent=self)
+                if dialog.exec() == QDialog.DialogCode.Accepted:
+                    selected_index = dialog.get_selected_zone_index()
+                    logger.info(f"SelectInterestZoneDialog: zone sélectionnée index {selected_index}")
+                    return selected_index
+                return -1
+            else:
+                logger.warning("SelectInterestZoneDialog nécessite une liste de zones")
+                return -1
+        except Exception as e:
+            logger.error(f"Erreur lors de l'utilisation de SelectInterestZoneDialog: {e}")
+            return -1
+    
+    def use_simulation_orchestrator(self, scene=None, antennas=None):
+        """Utilise SimulationOrchestrator pour orchestrer une simulation complète."""
+        try:
+            if self.simulation_orchestrator and scene and antennas:
+                # Ajouter la scène à l'orchestrateur
+                self.simulation_orchestrator.set_scene(scene)
+                
+                # Ajouter les antennes à l'orchestrateur
+                for antenna in antennas:
+                    self.simulation_orchestrator.add_antenna(antenna)
+                
+                # Lancer la simulation
+                results = self.simulation_orchestrator.run_simulation()
+                logger.info("SimulationOrchestrator utilisé avec succès")
+                return results
+            else:
+                logger.warning("SimulationOrchestrator non disponible ou paramètres manquants")
+                return None
+        except Exception as e:
+            logger.error(f"Erreur lors de l'utilisation de SimulationOrchestrator: {e}")
+            return None
+    
+    def use_simulation_config_dialog(self, antenna_names=None):
+        """Utilise SimulationConfigDialog pour configurer les paramètres de simulation."""
+        try:
+            if antenna_names:
+                dialog = SimulationConfigDialog(antenna_names, parent=self)
+                if dialog.exec() == QDialog.DialogCode.Accepted:
+                    config = dialog.get_configuration()
+                    logger.info("SimulationConfigDialog: configuration obtenue")
+                    return config
+                return None
+            else:
+                logger.warning("SimulationConfigDialog nécessite une liste de noms d'antennes")
+                return None
+        except Exception as e:
+            logger.error(f"Erreur lors de l'utilisation de SimulationConfigDialog: {e}")
+            return None
+    
+    def use_test_antenna_from_properties_panel(self):
+        """Utilise TestAntenna (classe interne de PropertiesPanel) pour les tests."""
+        try:
+            if hasattr(self, 'properties_panel') and self.properties_panel:
+                # Accéder à la classe TestAntenna via PropertiesPanel
+                # (C'est une classe interne, donc accessible via le module)
+                from gui.widgets.properties_panel import PropertiesPanel
+                test_antenna = PropertiesPanel.TestAntenna()
+                logger.info("TestAntenna utilisé via PropertiesPanel")
+                return test_antenna
+            else:
+                logger.warning("PropertiesPanel non disponible pour TestAntenna")
+                return None
+        except Exception as e:
+            logger.error(f"Erreur lors de l'utilisation de TestAntenna: {e}")
+            return None
+    
+    def use_units_converter(self, value=None, from_unit=None, to_unit=None):
+        """Utilise UnitsConverter pour convertir les unités."""
+        try:
+            if value is not None and from_unit and to_unit:
+                # Exemple de conversion de fréquence
+                if from_unit.lower() in ['hz', 'khz', 'mhz', 'ghz'] and to_unit.lower() in ['hz', 'khz', 'mhz', 'ghz']:
+                    # Conversion de fréquence
+                    freq_hz = self.units_converter.parse_frequency(f"{value} {from_unit}")
+                    result = self.units_converter.format_frequency(freq_hz)
+                    logger.info(f"UnitsConverter: {value} {from_unit} -> {result}")
+                    return result
+                else:
+                    logger.warning(f"UnitsConverter: Types d'unités non supportés: {from_unit} -> {to_unit}")
+                    return None
+            else:
+                logger.warning("UnitsConverter: Paramètres manquants (valeur, unité source, unité cible)")
+                return None
+        except Exception as e:
+            logger.error(f"Erreur lors de l'utilisation de UnitsConverter: {e}")
+            return None
+    
+    def use_visualization_2d_window(self, simulation_data=None):
+        """Utilise Visualization2DWindow pour afficher une vue 2D."""
+        try:
+            if simulation_data:
+                # Créer la fenêtre 2D si elle n'existe pas
+                if not self.visualization_2d_window:
+                    self.visualization_2d_window = Visualization2DWindow()
+                
+                # Afficher les données de simulation
+                self.visualization_2d_window.set_simulation_data(simulation_data)
+                self.visualization_2d_window.show()
+                logger.info("Visualization2DWindow utilisé avec succès")
+                return self.visualization_2d_window
+            else:
+                logger.warning("Visualization2DWindow nécessite des données de simulation")
+                return None
+        except Exception as e:
+            logger.error(f"Erreur lors de l'utilisation de Visualization2DWindow: {e}")
+            return None
+    
+    def use_antenna_factory(self, antenna_type="wifi", antenna_config=None):
+        """Utilise AntennaFactory pour créer des antennes."""
+        try:
+            if self.antenna_factory:
+                if antenna_config is None:
+                    # Configuration par défaut pour test
+                    antenna_config = {
+                        "name": "Test Antenna",
+                        "position": [0, 0, 1],
+                        "frequency": "2.4GHz",
+                        "power_dbm": 20.0
+                    }
+                
+                antenna = self.antenna_factory.create_antenna(antenna_type, antenna_config)
+                logger.info(f"AntennaFactory: antenne {antenna_type} créée avec succès")
+                return antenna
+            else:
+                logger.warning("AntennaFactory non disponible")
+                return None
+        except Exception as e:
+            logger.error(f"Erreur lors de l'utilisation d'AntennaFactory: {e}")
+            return None

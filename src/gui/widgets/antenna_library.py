@@ -541,6 +541,18 @@ class AntennaLibrary(QWidget):
             if hasattr(self.parent_window, 'status_bar'):
                 self.parent_window.status_bar.showMessage(f"ℹ️ {message}", 2000)
 
+# Backend factice pour les tests
+class FakeBackend:
+    """Backend factice pour tester l'interface sans vraie base de données."""
+    def get_available_antennas(self):
+        return [
+            {"name": "WiFi Omni", "type": "wifi"},
+            {"name": "5G Sector", "type": "5g"}
+        ]
+        
+    def add_antenna(self, antenna_type, config):
+        print(f"FakeBackend.add_antenna: type={antenna_type}, config={config}")
+
 # Pour tester le widget de manière isolée
 if __name__ == '__main__':
     app = QApplication(sys.argv)
