@@ -11,8 +11,16 @@ from core.application.optimized_rf_calculator import OptimizedRFCalculator
 from core.application.data_validator import DataValidator, DataValidationError
 from core.infrastructure.grid_generator import GridGenerator
 from core.infrastructure.cache_manager import SimulationCache
-from extensions.application.memory_manager import MemoryManager
 from core.infrastructure.performance_monitor import PerformanceMonitor
+
+# Optional extensions import
+try:
+    from extensions.application.memory_manager import MemoryManager
+    MEMORY_MANAGER_AVAILABLE = True
+except ImportError:
+    MemoryManager = None
+    MEMORY_MANAGER_AVAILABLE = False
+    logger.debug("MemoryManager extension not available - using default memory handling")
 
 
 class SimulationOrchestrator:
@@ -58,7 +66,11 @@ class SimulationOrchestrator:
         self.config = None
         self.is_running = False
         self.cache = SimulationCache()
-        self.memory_manager = MemoryManager()
+        # Optional MemoryManager - only use if available
+        if MEMORY_MANAGER_AVAILABLE and MemoryManager is not None:
+            self.memory_manager = MemoryManager()
+        else:
+            self.memory_manager = None
         self.performance_monitor = PerformanceMonitor()
         self.file_loader = FileLoader()
 

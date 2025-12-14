@@ -158,11 +158,11 @@ class SceneViewer3DWidget(QWidget):
         # Émettre signal pour notifier la fenêtre principale
         self.view_changed.emit("normal")
     
-    def keyPressEvent(self, event):
+    def keyPressEvent(self, a0):
         """Gère les événements clavier pour l'interface."""
         try:
             # F11 pour plein écran
-            if event.key() == Qt.Key.Key_F11:
+            if a0 is not None and a0.key() == Qt.Key.Key_F11:
                 if not self.is_fullscreen:
                     self.switch_to_fullscreen_mode()
                 else:
@@ -171,20 +171,20 @@ class SceneViewer3DWidget(QWidget):
             
             # Déléguer les autres événements au moteur de visualisation
             if self.visualization_engine:
-                self.visualization_engine.keyPressEvent(event)
+                self.visualization_engine.keyPressEvent(a0)
                 
         except Exception as e:
             logger.error(f"SceneViewer3DWidget: Erreur événement clavier: {e}")
         
-        super().keyPressEvent(event)
+        super().keyPressEvent(a0)
     
-    def resizeEvent(self, event):
+    def resizeEvent(self, a0):
         """Gère le redimensionnement du widget."""
-        super().resizeEvent(event)
+        super().resizeEvent(a0)
         if self.visualization_engine:
-            self.visualization_engine.resizeEvent(event)
+            self.visualization_engine.resizeEvent(a0)
     
-    def closeEvent(self, event):
+    def closeEvent(self, a0):
         """Gère la fermeture du widget."""
         try:
             if self.visualization_engine:
@@ -193,7 +193,7 @@ class SceneViewer3DWidget(QWidget):
         except Exception as e:
             logger.error(f"SceneViewer3DWidget: Erreur fermeture: {e}")
         
-        super().closeEvent(event)
+        super().closeEvent(a0)
     
     # Méthodes de délégation vers le moteur (Interface Application Layer)
     def update_point_opacity(self, opacity):
@@ -301,7 +301,7 @@ class SceneViewer3DWidget(QWidget):
             antenna: Objet antenne à visualiser
         """
         try:
-            if hasattr(self.visualization_engine, 'add_antenna_visualization'):
+            if self.visualization_engine is not None and hasattr(self.visualization_engine, 'add_antenna_visualization'):
                 self.visualization_engine.add_antenna_visualization(antenna)
                 logger.info(f"SceneViewer3DWidget: Antenne {getattr(antenna, 'name', 'Inconnue')} ajoutée à la visualisation")
             else:
@@ -320,7 +320,7 @@ class SceneViewer3DWidget(QWidget):
             point_settings: Paramètres des points de simulation
         """
         try:
-            if hasattr(self.visualization_engine, 'update_results_visualization'):
+            if self.visualization_engine is not None and hasattr(self.visualization_engine, 'update_results_visualization'):
                 self.visualization_engine.update_results_visualization(simulation_results, antennas, point_settings)
                 logger.info("SceneViewer3DWidget: Résultats de simulation mis à jour dans la visualisation")
             else:
@@ -334,7 +334,7 @@ class SceneViewer3DWidget(QWidget):
         Efface complètement la scène 3D.
         """
         try:
-            if hasattr(self.visualization_engine, 'clear_scene'):
+            if self.visualization_engine is not None and hasattr(self.visualization_engine, 'clear_scene'):
                 self.visualization_engine.clear_scene()
                 logger.info("SceneViewer3DWidget: Scène effacée")
             else:
@@ -348,7 +348,7 @@ class SceneViewer3DWidget(QWidget):
         Initialise une scène vide.
         """
         try:
-            if hasattr(self.visualization_engine, 'initialize_empty_scene'):
+            if self.visualization_engine is not None and hasattr(self.visualization_engine, 'initialize_empty_scene'):
                 self.visualization_engine.initialize_empty_scene()
                 logger.info("SceneViewer3DWidget: Scène vide initialisée")
             else:
@@ -362,7 +362,7 @@ class SceneViewer3DWidget(QWidget):
         Efface les résultats de simulation de la visualisation.
         """
         try:
-            if hasattr(self.visualization_engine, 'clear_results'):
+            if self.visualization_engine is not None and hasattr(self.visualization_engine, 'clear_results'):
                 self.visualization_engine.clear_results()
                 logger.info("SceneViewer3DWidget: Résultats de simulation effacés")
             else:

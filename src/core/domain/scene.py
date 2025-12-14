@@ -88,7 +88,63 @@ class Scene3D:
         logger.info(f"Scene3D.load_from_data: Traitement des données de type {type(data)}")
         self.data = data
         self._process_data()
+        # Construire l'index spatial pour optimisation des calculs RF
+        self._build_spatial_index()
         logger.info("Scene3D.load_from_data: Données chargées avec succès")
+
+    def _build_spatial_index(self):
+        """
+        Construit l'index spatial Octree pour optimiser les requêtes spatiales.
+        
+        Cet index permet d'accélérer significativement:
+        - Les tests de ligne de vue (ray casting)
+        - La détection d'obstacles sur les chemins de propagation
+        - Les requêtes de voisinage
+        """
+        try:
+            from core.domain.spatial_index import SpatialIndex
+            
+            if self.mesh is None:
+                logger.debug("Scene3D._build_spatial_index: Pas de mesh disponible")
+                return
+            
+            bounds = self.mesh.bounds  # (xmin, xmax, ymin, ymax, zmin, zmax)
+            
+            # Créer l'index spatial
+            self.spatial_index = SpatialIndex(
+                scene_bounds=bounds,
+                max_depth=10,
+                max_points_per_node=16
+            )
+            
+            # Indexer les centres des cellules pour la détection d'obstacles
+            if hasattr(self.mesh, 'cell_centers') and self.mesh.n_cells > 0:
+                cell_centers = self.mesh.cell_centers()
+                points = cell_centers.points
+                
+                for i, point in enumerate(points):
+                    self.spatial_index.insert(
+                        point.tolist(), 
+                        {"cell_id": i, "type": "obstacle"}
+                    )
+                
+                # Log des statistiques
+                stats = self.spatial_index.get_statistics()
+                logger.info(f"Scene3D: Index spatial construit - {len(points)} cellules indexées, "
+                           f"{stats['total_nodes']} noeuds Octree, profondeur max: {stats['max_depth_reached']}")
+            else:
+                # Fallback: indexer les sommets
+                points = self.mesh.points
+                for i, point in enumerate(points):
+                    self.spatial_index.insert(point.tolist(), {"point_id": i, "type": "vertex"})
+                logger.info(f"Scene3D: Index spatial construit avec {len(points)} sommets")
+                
+        except ImportError:
+            logger.debug("Scene3D._build_spatial_index: Module spatial_index non disponible")
+            self.spatial_index = None
+        except Exception as e:
+            logger.warning(f"Scene3D._build_spatial_index: Erreur lors de la construction: {e}")
+            self.spatial_index = None
 
     def _process_data(self):
         """Traite les données brutes pour créer un mesh utilisable."""
