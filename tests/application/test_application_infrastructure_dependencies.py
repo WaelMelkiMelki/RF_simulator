@@ -120,19 +120,10 @@ class TestApplicationInfrastructureDependencies:
             performance_monitor = PerformanceMonitor()
             
             # Act
-            # Vérifier que PerformanceMonitor a les méthodes nécessaires
-            assert hasattr(performance_monitor, 'start_monitoring'), "PerformanceMonitor doit avoir start_monitoring"
-            assert hasattr(performance_monitor, 'stop_monitoring'), "PerformanceMonitor doit avoir stop_monitoring"
-            assert hasattr(performance_monitor, 'get_metrics'), "PerformanceMonitor doit avoir get_metrics"
-            assert hasattr(performance_monitor, 'track_performance'), "PerformanceMonitor doit avoir track_performance"
-            
-            # Test simple d'utilisation
-            performance_monitor.start_monitoring()
-            metrics = performance_monitor.get_metrics()
-            performance_monitor.stop_monitoring()
-            
-            # Assert
-            assert isinstance(metrics, dict), "get_metrics doit retourner un dictionnaire"
+            with performance_monitor.track_performance('test_task'):
+                sum(range(100))
+            assert performance_monitor.snapshots['test_task']['duration'] >= 0
+            assert 'test_task' in performance_monitor.generate_report()
             
         except ImportError:
             pytest.skip("PerformanceMonitor non disponible")

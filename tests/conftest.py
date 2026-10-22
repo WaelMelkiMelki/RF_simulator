@@ -1,104 +1,30 @@
-# src/gui/adapters/backend_adapter.py
-"""
-Adaptateur entre l'interface graphique et le backend de l'application.
-Fournit une API simplifiée pour l'interface utilisateur.
-"""
-
-import logging
-from PyQt6.QtCore import QObject, pyqtSignal
-from core.application.simulation_orchestrator import SimulationOrchestrator
-from core.infrastructure.file_loader import FileLoader
+"""Shared, deterministic domain fixtures (no application startup at collection)."""
+import pytest
+import pyvista as pv
+from core.domain.scene import Scene3D
 from core.domain.antenna_factory import AntennaFactory
+from core.domain.rf_models import FreeSpaceModel, SimpleRayTracingModel
 
-logger = logging.getLogger(__name__)
+@pytest.fixture
+def simple_mesh():
+    return pv.Box(bounds=(0., 1., 0., 1., 0., 1.))
 
-class BackendAdapter(QObject):
-    """Adaptateur entre la GUI et le backend."""
-    
-    # Signaux pour communiquer avec la GUI
-    scene_loaded = pyqtSignal(object)  # Émet la scène chargée
-    antenna_added = pyqtSignal(object)  # Émet l'antenne ajoutée
-    antenna_selected = pyqtSignal(object)  # Émet la liste des antennes sélectionnées
-    simulation_started = pyqtSignal()
-    simulation_progress = pyqtSignal(int, str)  # Progrès (0-100), message
-    simulation_finished = pyqtSignal(object)  # Émet les résultats
-    error_occurred = pyqtSignal(str)  # Émet un message d'erreur
-    
-    def __init__(self):
-        super().__init__()
-        logger.debug("BackendAdapter: Initialisation...")
-        self.orchestrator = SimulationOrchestrator()
-        self.file_loader = FileLoader()
-        self.antenna_factory = AntennaFactory()
-        self.current_scene = None
-        self.antennas = []
-        logger.info("BackendAdapter: Initialisation terminée")
+@pytest.fixture
+def test_scene(simple_mesh):
+    return Scene3D(data=simple_mesh)
 
-    def load_scene(self, file_path):
-        """Charge une scène depuis un fichier."""
-        try:
-            logger.info(f"BackendAdapter: Chargement de la scène depuis {file_path}")
-            scene = self.file_loader.load_file(file_path)
-            self.current_scene = scene
-            self.scene_loaded.emit(scene)
-            logger.info(f"BackendAdapter: Scène chargée avec succès depuis {file_path}")
-        except Exception as e:
-            error_msg = f"Erreur lors du chargement de la scène '{file_path}': {e}"
-            logger.error(error_msg)
-            self.error_occurred.emit(error_msg)
-            raise
+@pytest.fixture
+def wifi_antenna():
+    return AntennaFactory().create_antenna('wifi', {'name': 'WiFi', 'position': [0, 0, 1], 'frequency': '2.4GHz'})
 
-    def add_antenna(self, antenna):
-        """Ajoute une antenne à la simulation."""
-        try:
-            logger.info(f"BackendAdapter: Ajout de l'antenne {antenna.name}")
-            self.antennas.append(antenna)
-            self.orchestrator.add_antenna(antenna)
-            self.antenna_added.emit(antenna)
-            logger.info(f"BackendAdapter: Antenne {antenna.name} ajoutée avec succès")
-        except Exception as e:
-            error_msg = f"Erreur lors de l'ajout de l'antenne '{antenna.name}': {e}"
-            logger.error(error_msg)
-            self.error_occurred.emit(error_msg)
-            raise
+@pytest.fixture
+def antenna_5g():
+    return AntennaFactory().create_antenna('5g', {'name': '5G', 'position': [0, 0, 1], 'frequency': '3.5GHz'})
 
-    def select_antenna(self, antenna_ids):
-        """Sélectionne les antennes par leurs IDs."""
-        try:
-            logger.info(f"BackendAdapter: Sélection des antennes {antenna_ids}")
-            selected_antennas = [ant for ant in self.antennas if ant.name in antenna_ids]
-            self.antenna_selected.emit(selected_antennas)
-            logger.info(f"BackendAdapter: {len(selected_antennas)} antennes sélectionnées")
-        except Exception as e:
-            error_msg = f"Erreur lors de la sélection des antennes: {e}"
-            logger.error(error_msg)
-            self.error_occurred.emit(error_msg)
-            raise
+@pytest.fixture
+def free_space_model():
+    return FreeSpaceModel()
 
-    def start_simulation(self, config=None):
-        """Démarre la simulation."""
-        try:
-            logger.info("BackendAdapter: Démarrage de la simulation")
-            self.simulation_started.emit()
-            
-            # Configurer la simulation
-            if self.current_scene:
-                self.orchestrator.set_scene(self.current_scene)
-            
-            # Connecter les callbacks de progression
-            def progress_callback(progress, message):
-                self.simulation_progress.emit(progress, message)
-            
-            # Exécuter la simulation
-            results = self.orchestrator.start_simulation(
-                config if config else {},
-                progress_callback=progress_callback
-            )
-            
-            self.simulation_finished.emit(results)
-            logger.info("BackendAdapter: Simulation terminée avec succès")
-        except Exception as e:
-            error_msg = f"Erreur lors de la simulation: {e}"
-            logger.error(error_msg)
-            self.error_occurred.emit(error_msg)
-            raise
+@pytest.fixture
+def ray_tracing_model():
+    return SimpleRayTracingModel(max_reflections=2)

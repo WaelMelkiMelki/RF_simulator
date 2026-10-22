@@ -105,15 +105,19 @@ class SimulationOrchestrator:
         """
         self.scene = scene
 
-    def add_antenna(self, antenna: BaseAntenna) -> None:
+    def add_antenna(self, antenna, config=None):
         """
         Ajoute une antenne à la simulation.
         
         Args:
             antenna (BaseAntenna): Instance d'antenne à ajouter
         """
+        if config is not None:
+            from core.domain.antenna_factory import AntennaFactory
+            antenna = AntennaFactory().create_antenna(antenna, config)
         self.antennas.append(antenna)
         logger.info(f"SimulationOrchestrator: Antenne '{antenna.name}' ajoutée")
+        return antenna
 
     def set_antennas(self, antennas):
         """Configure les antennes pour la simulation."""
@@ -247,7 +251,8 @@ class SimulationOrchestrator:
                         coverage.append(future.result())
                         completed += 1
                         if completed % 100 == 0:
-                            self.memory_manager.limit_memory(2000)
+                            if self.memory_manager is not None:
+                                self.memory_manager.limit_memory(2000)
                             if progress_callback:
                                 progress = int((completed / total_points) * 100)
                                 progress_callback(progress, f"Calcul en cours... {completed}/{total_points}")

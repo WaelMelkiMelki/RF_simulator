@@ -14,15 +14,6 @@ logger = logging.getLogger(__name__)
 
 class Scene3D:
     """Représente une scène 3D avec géométrie et propriétés matérielles."""
-    def __init__(self):
-        self.data = None  # Données brutes (PolyData, MultiBlock, etc.)
-        self.mesh = None  # Mesh PyVista traité (fusionné)
-        self.meshes = {}
-        self.materials = []  # Propriétés matérielles
-        self.material_mapping = {}  # Mapping entre noms de matériaux et indices
-        self.mesh_material_mapping = {}
-
-
     def propagate_materials_to_cells(self):
         """Propage les matériaux assignés aux cellules de la scène."""
         try:
@@ -62,18 +53,7 @@ class Scene3D:
         except Exception as e:
             logger.error(f"Erreur lors de la propagation des matériaux aux cellules: {e}")
 
-import logging
-import numpy as np
-import pyvista as pv
-from typing import Optional, Any, Dict, List
-import os
-
-logger = logging.getLogger(__name__)
-
-class Scene3D:
-    """Représente une scène 3D avec géométrie et propriétés matérielles."""
-    
-    def __init__(self):
+    def __init__(self, data=None):
         self.data = None  # Données brutes (PolyData, MultiBlock, etc.)
         self.mesh = None  # Mesh PyVista traité (fusionné)
         # NOUVEAU: Dictionnaire des meshes individuels {nom: PolyData}
@@ -82,6 +62,9 @@ class Scene3D:
         self.material_mapping = {}  # Mapping entre noms de matériaux et indices
         self.mesh_material_mapping = {}  # Ajoutez cette ligne
         self.spatial_index = None  # Index spatial pour optimisation
+        self.material_properties = {}
+        if data is not None:
+            self.load_from_data(data)
         
     def load_from_data(self, data: Any):
         """Charge la scène à partir de données PyVista."""
@@ -637,11 +620,12 @@ class Scene3D:
         intersection_points, cell_ids = mesh.ray_trace(start_point, end_point, first_point=False)[:2]
         return cell_ids, intersection_points
 
-    # Vérification définitive de la méthode propagate_materials_to_cells
-    def __getattribute__(self, name):
-        if name == 'propagate_materials_to_cells':
-            # Vérification que la méthode existe
-            if not hasattr(self, '_propagate_materials_to_cells_defined'):
-                logger.error("METHODE propagate_materials_to_cells NON TROUVEE!")
-                return lambda: logger.warning("Méthode factice appelée")
-        return super().__getattribute__(name)
+    def load_mesh(self, mesh):
+        """Compatibility entry point; use the same processing path as file loading."""
+        self.load_from_data(mesh)
+
+    def process_glb_data(self, data):
+        self.load_from_data(data)
+
+    def get_material_properties(self, name):
+        return self.material_properties.get(name)

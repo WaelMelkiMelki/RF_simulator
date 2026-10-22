@@ -17,7 +17,6 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import pyqtSignal, Qt
 from PyQt6.QtGui import QFont
-from torch import layout
 
 
 class PropertiesPanel(QWidget):
@@ -82,7 +81,7 @@ class PropertiesPanel(QWidget):
             if key in config and not isinstance(config[key], expected_type):
                 print(f"WARNING: Type incorrect pour {key}. Attendu: {expected_type}, Reçu: {type(config[key])}")
                 # Optionnel : conversion automatique si possible
-                if float in expected_type:
+                if isinstance(expected_type, tuple) and float in expected_type:
                     try:
                         config[key] = float(config[key])
                     except (TypeError, ValueError):
@@ -302,7 +301,7 @@ class PropertiesPanel(QWidget):
         calc_layout = QFormLayout(calc_group)
 
         self.backend_combo = QComboBox()
-        self.backend_combo.addItems(["default", "optimized", "pytorch"])
+        self.backend_combo.addItems(["optimized", "default"])
         calc_layout.addRow("Backend de Calcul:", self.backend_combo)
 
         self.parallel_check = QCheckBox("Calculs Parallèles")

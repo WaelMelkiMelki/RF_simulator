@@ -32,7 +32,7 @@ class ConfigManager:
         """
         self.config_path = config_path
         self.config_data = {}
-        if config_path and os.path.exists(config_path):
+        if config_path:
             self.load_config(config_path)
     
     def load_config(self, config_path: str) -> Dict[str, Any]:

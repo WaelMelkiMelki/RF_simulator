@@ -368,6 +368,8 @@ class OptimizedRFCalculator:
         Returns:
             dict: {'points': [...], 'values': [...]}
         """
+        if not np.isfinite(resolution) or resolution <= 0:
+            raise ValueError("resolution must be finite and greater than zero")
         self.benchmark.start("total_calculation")
         
         logger.info(f"OptimizedRFCalculator: Calcul de la grille détaillée avec résolution {resolution}m")
@@ -409,78 +411,15 @@ class OptimizedRFCalculator:
         return results
 
     def _calculate_parallel(self, grid_points: np.ndarray) -> Dict[str, List]:
-        """
-        Calcule les signaux en utilisant des opérations vectorisées NumPy.
-        
-        Cette méthode utilise des calculs matriciels pour traiter tous les points
-        simultanément, ce qui est beaucoup plus rapide que le multiprocessing
-        pour ce type de calcul numérique.
-        """
-        self.benchmark.start("parallel_calculation")
-        
-        # Préparer les positions d'antennes en array
-        antenna_positions = np.array([ant.position for ant in self.antennas])
-        antenna_frequencies = np.array([ant.frequency for ant in self.antennas])
-        antenna_powers = np.array([ant.power_dbm for ant in self.antennas])
-        
-        num_points = len(grid_points)
-        num_antennas = len(self.antennas)
-        
-        logger.info(f"OptimizedRFCalculator: Calcul vectorisé pour {num_points} points, {num_antennas} antennes")
-        
-        # Calcul vectorisé des distances (broadcasting)
-        # grid_points: (N, 3), antenna_positions: (M, 3)
-        # Résultat: distances (N, M) - distance de chaque point à chaque antenne
-        diff = grid_points[:, np.newaxis, :] - antenna_positions[np.newaxis, :, :]  # (N, M, 3)
-        distances = np.sqrt(np.sum(diff**2, axis=2))  # (N, M)
-        
-        # Éviter la division par zéro
-        distances = np.maximum(distances, 0.1)
-        
-        # Calcul vectorisé de la perte de propagation (Friis)
-        # wavelength = c / f
-        c = 299792458.0
-        wavelengths = c / antenna_frequencies  # (M,)
-        
-        # Path loss = 20*log10(4*pi*d/lambda)
-        path_loss = 20 * np.log10(4 * np.pi * distances / wavelengths[np.newaxis, :])  # (N, M)
-        
-        # RSSI = Puissance - Perte
-        rssi = antenna_powers[np.newaxis, :] - path_loss  # (N, M)
-        
-        # Combiner les signaux de toutes les antennes (somme des puissances)
-        # Convertir de dBm en linéaire, sommer, reconvertir
-        # Utiliser un seuil pour éviter les problèmes numériques
-        rssi_clipped = np.clip(rssi, -150, 50)  # Limiter les valeurs extrêmes
-        power_linear = 10 ** (rssi_clipped / 10)  # (N, M)
-        total_power_linear = np.sum(power_linear, axis=1)  # (N,)
-        
-        # Reconvertir en dBm
-        total_signal = 10 * np.log10(np.maximum(total_power_linear, 1e-20))  # (N,)
-        
-        parallel_time = self.benchmark.stop("parallel_calculation")
-        logger.info(f"OptimizedRFCalculator: Calcul vectorisé terminé en {parallel_time:.2f}s")
-        
-        # Filtrer et formater les résultats
-        signal_values = []
-        valid_points = []
-        
-        for i, signal in enumerate(total_signal):
-            if signal > -200:
-                signal_values.append(float(signal))
-                valid_points.append(grid_points[i].tolist())
-        
-        self._log_signal_statistics(total_signal.tolist(), signal_values, valid_points)
-        
-        return {
-            'points': valid_points,
-            'values': signal_values
-        }
+        """Compatibility entry point preserving the selected propagation model."""
+        # The old vectorized path silently replaced every selected propagation
+        # model with Friis above 1000 points. Preserve model semantics first.
+        return self._calculate_sequential(grid_points)
 
     def _calculate_sequential(self, grid_points: np.ndarray) -> Dict[str, List]:
         """
         Calcule les signaux de manière séquentielle (fallback ou petites grilles).
-        Utilise le cache spatial Octree pour accélérer les tests de ligne de vue.
+        Délègue les pertes au modèle de propagation sélectionné.
         """
         self.benchmark.start("sequential_calculation")
         
@@ -512,33 +451,20 @@ class OptimizedRFCalculator:
         }
 
     def _calculate_total_signal_at_point_optimized(self, point) -> float:
-        """
-        Calcule le signal total à un point avec optimisations Octree.
-        
-        Utilise le cache spatial pour accélérer la détection des obstacles
-        sur le chemin de propagation.
-        """
+        """Combine received powers using the selected propagation model."""
         total_signal = -100.0
         signal_found = False
-        point_arr = np.array(point)
         
         for antenna in self.antennas:
             try:
-                antenna_pos = np.array(antenna.position)
-                
-                # Utiliser le cache spatial pour vérifier la ligne de vue
-                if self.use_spatial_cache and self.spatial_index is not None:
-                    has_los, extra_attenuation = self._check_line_of_sight_cached(antenna_pos, point_arr)
-                else:
-                    has_los, extra_attenuation = True, 0.0
                 
                 # Calculer la perte de propagation
                 loss = self.propagation_model.calculate_path_loss(
                     antenna.position, point, self.scene, antenna.frequency
                 )
                 
-                # Ajouter l'atténuation due aux obstacles détectés par l'Octree
-                loss += extra_attenuation
+                # Material-aware models already account for intersections.
+                # Free-space propagation must remain independent of obstacles.
                 
                 rssi = antenna.power_dbm - loss
                 

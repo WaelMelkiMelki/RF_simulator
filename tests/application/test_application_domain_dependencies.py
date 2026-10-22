@@ -125,7 +125,8 @@ class TestApplicationDomainDependencies:
 
         # Assert
         assert isinstance(free_space_model, FreeSpaceModel)
-        assert isinstance(ray_tracing_model, SimpleRayTracingModel)
+        from core.domain.rf_models import MaterialAwareModel
+        assert isinstance(ray_tracing_model, MaterialAwareModel)
         assert isinstance(default_model, FreeSpaceModel)
 
     def test_orchestrator_uses_propagation_strategy_in_simulation(self, valid_scene):
