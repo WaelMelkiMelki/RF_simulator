@@ -15,7 +15,7 @@ def test_propagation_strategy_uses_free_space_model(free_space_model):
     assert isinstance(path_loss, float)
     assert path_loss > 0  # Le path loss est positif en dB
     # Vérification approximative (formule de Friis)
-    expected_loss = 20 * np.log10(10) + 20 * np.log10(2.4e9) + 92.45
+    expected_loss = 20 * np.log10(4 * np.pi * 10 * 2.4e9 / 3e8)
     assert abs(path_loss - expected_loss) < 0.001
 
 def test_propagation_strategy_uses_ray_tracing_model(ray_tracing_model, test_scene, wifi_antenna):
